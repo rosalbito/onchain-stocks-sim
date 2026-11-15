@@ -1,0 +1,40 @@
+---
+source: crates/sim/tests/gates.rs
+expression: out
+---
+calm_weekday  fcfs            B=0    seed=1  log=3da17eff5dcc672b  fills=1b1628d42edd535e
+calm_weekday  fcfs            B=0    seed=2  log=07103152f8846623  fills=b64b67df83feb2cd
+calm_weekday  fcfs            B=250  seed=1  log=340f5debcda287f1  fills=a0a737b7871c9c24
+calm_weekday  fcfs            B=250  seed=2  log=72882b812010b277  fills=f919b37cbad601d9
+calm_weekday  pga             B=0    seed=1  log=9cd943d89b18bfc4  fills=1b1628d42edd535e
+calm_weekday  pga             B=0    seed=2  log=9fdfe1e003bd316f  fills=b64b67df83feb2cd
+calm_weekday  pga             B=250  seed=1  log=af5b13d33a824dbd  fills=59f1d86c0c475841
+calm_weekday  pga             B=250  seed=2  log=40b28e3c2b642b28  fills=74f7651a05b46171
+calm_weekday  cancel_priority B=0    seed=1  log=9f223662af389d95  fills=1b1628d42edd535e
+calm_weekday  cancel_priority B=0    seed=2  log=5c07262eef9c4272  fills=b64b67df83feb2cd
+calm_weekday  cancel_priority B=250  seed=1  log=42c9eaf7bf7a1dee  fills=469dd44353d95814
+calm_weekday  cancel_priority B=250  seed=2  log=a4e164072731439b  fills=b50c713c50eb99be
+news_jump     fcfs            B=0    seed=1  log=f2ab07312f30ef8e  fills=f869baf1b1cdbab7
+news_jump     fcfs            B=0    seed=2  log=4c1630bb53b3a06c  fills=9d850695a27c2bf2
+news_jump     fcfs            B=250  seed=1  log=cfa74db9522a76ea  fills=6c4b9de0426dd2fe
+news_jump     fcfs            B=250  seed=2  log=a274c487bb2c4f32  fills=b238388481d2daf0
+news_jump     pga             B=0    seed=1  log=1a398a477e86087a  fills=f869baf1b1cdbab7
+news_jump     pga             B=0    seed=2  log=b0cf2ed104bd8876  fills=9d850695a27c2bf2
+news_jump     pga             B=250  seed=1  log=340f8f1e782b23e4  fills=20f8781ed1ff4015
+news_jump     pga             B=250  seed=2  log=3f2707e7fa8bbdc6  fills=c34be59b8fbd300c
+news_jump     cancel_priority B=0    seed=1  log=6863da508eb88e3f  fills=f869baf1b1cdbab7
+news_jump     cancel_priority B=0    seed=2  log=46a4e406f5751629  fills=9d850695a27c2bf2
+news_jump     cancel_priority B=250  seed=1  log=e1fa13a9c3f1c24c  fills=4e861cf3cd85b72b
+news_jump     cancel_priority B=250  seed=2  log=d5093edd011361dc  fills=8a342ff4ed6aff01
+monday_open   fcfs            B=0    seed=1  log=b50f56608c51f3f6  fills=0f331b97640023cb
+monday_open   fcfs            B=0    seed=2  log=67a1b4de9df5d2bb  fills=f2592cdab5df89d0
+monday_open   fcfs            B=250  seed=1  log=9ed245b78660a5a1  fills=407fe31681c902fc
+monday_open   fcfs            B=250  seed=2  log=8547d98e4a39015e  fills=26685d6243c48529
+monday_open   pga             B=0    seed=1  log=6cfb4d523151c6c0  fills=0f331b97640023cb
+monday_open   pga             B=0    seed=2  log=17fe17807098df59  fills=f2592cdab5df89d0
+monday_open   pga             B=250  seed=1  log=e985f8cc0317af60  fills=e2ead0eadc5e9b85
+monday_open   pga             B=250  seed=2  log=c9a4e1984b0bba8a  fills=8c0bef12ae1c839e
+monday_open   cancel_priority B=0    seed=1  log=2c43f9feeec6d43a  fills=0f331b97640023cb
+monday_open   cancel_priority B=0    seed=2  log=eea091dfea038df1  fills=f2592cdab5df89d0
+monday_open   cancel_priority B=250  seed=1  log=70102ff64a513c56  fills=42e54ad6bf4df873
+monday_open   cancel_priority B=250  seed=2  log=bb46779eb401f92f  fills=5cda81c02bd87566
