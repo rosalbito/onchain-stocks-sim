@@ -1,0 +1,102 @@
+---
+source: crates/engine/tests/hand_logs.rs
+expression: ev
+---
+[
+    Event {
+        seq: 1,
+        kind: Accepted {
+            order_id: 1,
+            agent: 1,
+            side: Sell,
+            px: 100,
+            qty: 2,
+            tif: Gtc,
+        },
+    },
+    Event {
+        seq: 1,
+        kind: BookChange {
+            side: Sell,
+            px: 100,
+            qty: 2,
+        },
+    },
+    Event {
+        seq: 2,
+        kind: Accepted {
+            order_id: 2,
+            agent: 2,
+            side: Sell,
+            px: 100,
+            qty: 2,
+            tif: Gtc,
+        },
+    },
+    Event {
+        seq: 2,
+        kind: BookChange {
+            side: Sell,
+            px: 100,
+            qty: 4,
+        },
+    },
+    Event {
+        seq: 3,
+        kind: Accepted {
+            order_id: 3,
+            agent: 1,
+            side: Buy,
+            px: 100,
+            qty: 3,
+            tif: Ioc,
+        },
+    },
+    Event {
+        seq: 3,
+        kind: Cancelled {
+            order_id: 1,
+            agent: 1,
+            qty: 2,
+            reason: SelfTrade,
+        },
+    },
+    Event {
+        seq: 3,
+        kind: BookChange {
+            side: Sell,
+            px: 100,
+            qty: 2,
+        },
+    },
+    Event {
+        seq: 3,
+        kind: Fill {
+            maker_order: 2,
+            maker_agent: 2,
+            taker_order: 3,
+            taker_agent: 1,
+            taker_side: Buy,
+            px: 100,
+            qty: 2,
+            maker_remaining: 0,
+        },
+    },
+    Event {
+        seq: 3,
+        kind: BookChange {
+            side: Sell,
+            px: 100,
+            qty: 0,
+        },
+    },
+    Event {
+        seq: 3,
+        kind: Cancelled {
+            order_id: 3,
+            agent: 1,
+            qty: 1,
+            reason: IocRemainder,
+        },
+    },
+]

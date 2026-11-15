@@ -1,0 +1,141 @@
+---
+source: crates/engine/tests/hand_logs.rs
+expression: ev
+---
+[
+    Event {
+        seq: 1,
+        kind: Accepted {
+            order_id: 1,
+            agent: 1,
+            side: Buy,
+            px: 9999,
+            qty: 10,
+            tif: Gtc,
+        },
+    },
+    Event {
+        seq: 1,
+        kind: BookChange {
+            side: Buy,
+            px: 9999,
+            qty: 10,
+        },
+    },
+    Event {
+        seq: 2,
+        kind: Accepted {
+            order_id: 2,
+            agent: 1,
+            side: Buy,
+            px: 9998,
+            qty: 5,
+            tif: Gtc,
+        },
+    },
+    Event {
+        seq: 2,
+        kind: BookChange {
+            side: Buy,
+            px: 9998,
+            qty: 5,
+        },
+    },
+    Event {
+        seq: 3,
+        kind: Accepted {
+            order_id: 3,
+            agent: 1,
+            side: Sell,
+            px: 10001,
+            qty: 10,
+            tif: Gtc,
+        },
+    },
+    Event {
+        seq: 3,
+        kind: BookChange {
+            side: Sell,
+            px: 10001,
+            qty: 10,
+        },
+    },
+    Event {
+        seq: 4,
+        kind: Accepted {
+            order_id: 4,
+            agent: 1,
+            side: Sell,
+            px: 10002,
+            qty: 5,
+            tif: Gtc,
+        },
+    },
+    Event {
+        seq: 4,
+        kind: BookChange {
+            side: Sell,
+            px: 10002,
+            qty: 5,
+        },
+    },
+    Event {
+        seq: 5,
+        kind: Tick {
+            px: 10005,
+        },
+    },
+    Event {
+        seq: 6,
+        kind: Accepted {
+            order_id: 6,
+            agent: 2,
+            side: Buy,
+            px: 10004,
+            qty: 15,
+            tif: Ioc,
+        },
+    },
+    Event {
+        seq: 6,
+        kind: Fill {
+            maker_order: 3,
+            maker_agent: 1,
+            taker_order: 6,
+            taker_agent: 2,
+            taker_side: Buy,
+            px: 10001,
+            qty: 10,
+            maker_remaining: 0,
+        },
+    },
+    Event {
+        seq: 6,
+        kind: BookChange {
+            side: Sell,
+            px: 10001,
+            qty: 0,
+        },
+    },
+    Event {
+        seq: 6,
+        kind: Fill {
+            maker_order: 4,
+            maker_agent: 1,
+            taker_order: 6,
+            taker_agent: 2,
+            taker_side: Buy,
+            px: 10002,
+            qty: 5,
+            maker_remaining: 0,
+        },
+    },
+    Event {
+        seq: 6,
+        kind: BookChange {
+            side: Sell,
+            px: 10002,
+            qty: 0,
+        },
+    },
+]

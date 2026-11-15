@@ -1,0 +1,62 @@
+---
+source: crates/engine/tests/hand_logs.rs
+expression: ev
+---
+[
+    Event {
+        seq: 1,
+        kind: Accepted {
+            order_id: 1,
+            agent: 1,
+            side: Sell,
+            px: 10002,
+            qty: 10,
+            tif: Gtc,
+        },
+    },
+    Event {
+        seq: 1,
+        kind: BookChange {
+            side: Sell,
+            px: 10002,
+            qty: 10,
+        },
+    },
+    Event {
+        seq: 2,
+        kind: Cancelled {
+            order_id: 1,
+            agent: 1,
+            qty: 10,
+            reason: User,
+        },
+    },
+    Event {
+        seq: 2,
+        kind: BookChange {
+            side: Sell,
+            px: 10002,
+            qty: 0,
+        },
+    },
+    Event {
+        seq: 3,
+        kind: Accepted {
+            order_id: 3,
+            agent: 2,
+            side: Buy,
+            px: 10003,
+            qty: 10,
+            tif: Ioc,
+        },
+    },
+    Event {
+        seq: 3,
+        kind: Cancelled {
+            order_id: 3,
+            agent: 2,
+            qty: 10,
+            reason: IocRemainder,
+        },
+    },
+]
