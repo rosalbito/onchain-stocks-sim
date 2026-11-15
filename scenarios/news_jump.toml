@@ -1,0 +1,13 @@
+# News jump (spec section 12): one 20-tick jump. Shows a single race.
+name = "news_jump"
+duration_s = 120
+
+[sequencer]
+rule = "fcfs"
+block_ms = 0
+
+[price]
+start_px_ticks = 10000
+step_rate_per_s = 1.0
+jump_rate_per_s = 0.0        # no random jumps ...
+scheduled_jumps = [{ at_s = 60.0, ticks = 20 }]   # ... just the news: +20 ticks at t = 60 s

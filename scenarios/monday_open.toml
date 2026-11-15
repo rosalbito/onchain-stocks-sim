@@ -1,0 +1,30 @@
+# Monday open (spec section 12): Friday close, a hidden weekend, the reopen jump.
+# Shows the largest transfer of the week.
+#
+# t = 0 is Friday 15:00 ET. One visible hour, then the price is hidden from Friday 16:00 ET to
+# Monday 09:30 ET (65.5 h) while the on-chain book keeps trading, then one reopen Tick jumps to
+# wherever the hidden path ended, then 30 minutes of Monday trading.
+name = "monday_open"
+duration_s = 241200          # 1 h + 65.5 h + 0.5 h
+
+[sequencer]
+rule = "fcfs"
+block_ms = 0
+
+[price]
+start_px_ticks = 10000
+step_rate_per_s = 1.0
+jump_rate_per_s = 0.0033333333333333335
+
+[weekend]
+close_at_s = 3600.0          # Friday 16:00 ET
+reopen_at_s = 239400.0       # Monday 09:30 ET
+step_rate_per_s = 0.1        # hidden walk: sd of the gap ~ sqrt(0.1 * 235800) ~ 150 ticks (1.5%)
+
+[lp]
+weekend_policy = "widen"     # widen | keep | withdraw
+weekend_widen = 3
+
+[regular]
+weekday_rate_per_s = 0.5
+weekend_rate_per_s = 0.1

@@ -1,0 +1,17 @@
+# Calm weekday (spec section 12): defaults, no jumps for the first minutes.
+# Shows the baseline spread and fill delay. Every field not set here takes the spec default
+# (sections 7 and 8); see crates/sim/src/config.rs.
+name = "calm_weekday"
+duration_s = 3600            # one weekday hour
+
+[sequencer]
+rule = "fcfs"                # fcfs | pga | cancel_priority
+block_ms = 0
+
+[price]
+start_px_ticks = 10000       # $100.00, tick $0.01
+step_rate_per_s = 1.0        # diffusion: about 1 tick per second
+jump_rate_per_s = 0.0033333333333333335   # about one jump every 5 minutes
+jump_min_ticks = 5
+jump_max_ticks = 20
+jumps_start_after_s = 600    # no jumps for the first 10 minutes

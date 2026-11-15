@@ -22,3 +22,7 @@ clap.workspace = true
 insta.workspace = true
 proptest.workspace = true
 
+
+[[bin]]
+name = "stale-quotes"
+path = "src/bin/stale-quotes.rs"
