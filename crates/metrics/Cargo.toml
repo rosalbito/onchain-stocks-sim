@@ -1,0 +1,10 @@
+[package]
+name = "metrics"
+description = "Market metrics. Phase 2 scope: account classes, the zero-sum check and race counting."
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+engine.workspace = true
