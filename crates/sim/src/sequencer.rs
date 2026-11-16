@@ -16,6 +16,8 @@ pub struct Pending {
     pub t_ns: u64,
     /// Arrival counter, the final tie-break.
     pub tiebreak: u64,
+    /// When the sender decided to send it. Not used for ordering; kept for the metrics.
+    pub decided_ns: u64,
     pub agent: AgentId,
     pub kind: MsgKind,
 }
@@ -75,7 +77,13 @@ impl Sequencer {
         }
     }
 
-    pub fn accept(&mut self, t_ns: u64, agent: AgentId, kind: MsgKind) -> Accepted {
+    pub fn accept(
+        &mut self,
+        t_ns: u64,
+        decided_ns: u64,
+        agent: AgentId,
+        kind: MsgKind,
+    ) -> Accepted {
         let tiebreak = self.arrivals;
         self.arrivals += 1;
         if self.block_ns == 0 {
@@ -89,6 +97,7 @@ impl Sequencer {
         entry.push(Pending {
             t_ns,
             tiebreak,
+            decided_ns,
             agent,
             kind,
         });

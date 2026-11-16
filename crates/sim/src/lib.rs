@@ -13,4 +13,4 @@ pub mod sequencer;
 mod sim;
 
 pub use config::{OrderingRule, Scenario};
-pub use sim::{run, Counts, RunResult};
+pub use sim::{run, run_with, Counts, RunOpts, RunResult};

@@ -305,3 +305,65 @@ fn budish_isolated_races_latency_scaling_keeps_sniper_take() {
         );
     }
 }
+
+// ------------------------------------------------------------------------------------------
+// Phase 3: the metrics agree with the simulation's own bookkeeping
+// ------------------------------------------------------------------------------------------
+
+/// The metrics are computed from the log by a fresh replay. They must agree with what the
+/// simulation counted online: the same races, the same horizon-0 transfers as `take_at_fill`,
+/// the same fees and volume, and PnL that sums to zero at every horizon.
+#[test]
+fn metrics_agree_with_the_simulation() {
+    use metrics::measure::NH;
+    for name in SCENARIOS {
+        for rule in OrderingRule::ALL {
+            for block_ms in [0, 250, 1_000] {
+                let s = with_rule(load(name), rule, block_ms);
+                let r = sim::run(&s, 5).unwrap();
+                let m = &r.metrics;
+                let ctx = format!("{name} {rule:?} B={block_ms}");
+                if r.counts.unsequenced == 0 {
+                    assert_eq!(m.races, r.races, "{ctx}");
+                }
+                assert_eq!(m.fills, r.counts.fills, "{ctx}");
+                assert_eq!(m.volume_lots, r.counts.volume_lots, "{ctx}");
+                assert_eq!(m.notional_tick_lots, r.counts.notional_tick_lots, "{ctx}");
+                assert_eq!(m.taker_fees, r.taker_fees, "{ctx}");
+                assert_eq!(m.priority_fees, r.priority_fees, "{ctx}");
+                for h in 0..NH {
+                    assert_eq!(m.class_pnl[h].iter().sum::<i128>(), 0, "{ctx} h={h}");
+                }
+                // Horizon 0, before fees: each class's gross gain equals the online markout.
+                for c in AccountClass::ALL {
+                    let i = c as usize;
+                    let gain: i128 = (0..5).map(|o| m.flow[0][o][i] - m.flow[0][i][o]).sum();
+                    assert_eq!(gain, r.take_at_fill[&c], "{ctx} {c:?}");
+                }
+                assert_eq!(m.quoted.total_ns, s.duration_s * 1_000_000_000, "{ctx}");
+                assert_eq!(m.monday.is_some(), name == "monday_open", "{ctx}");
+            }
+        }
+    }
+}
+
+/// With B = 0 the regular traders' fill delay is exactly their send latency (50 ± 20 ms); with
+/// B > 0 it adds the wait for the block, at most B.
+#[test]
+fn fill_delay_includes_the_block_wait() {
+    for block_ms in [0u64, 250, 1_000] {
+        let r = sim::run(
+            &with_rule(load("calm_weekday"), OrderingRule::Fcfs, block_ms),
+            3,
+        )
+        .unwrap();
+        let d = r.metrics.regular_delay;
+        let ms = 1_000_000;
+        assert!(d.count > 1_000);
+        assert!(
+            d.median_ns >= 30 * ms + block_ms * ms / 4,
+            "B={block_ms}: {d:?}"
+        );
+        assert!(d.p99_ns <= 70 * ms + block_ms * ms, "B={block_ms}: {d:?}");
+    }
+}
