@@ -2,7 +2,7 @@
 //! - zero-sum on every run,
 //! - same seed → byte-identical input log, and the log replays to the same fills,
 //! - golden hashes of the log and fills for fixed seeds per ordering rule,
-//! - the Budish check.
+//! - the Budish check, including latency scaling in races isolated from price drift.
 
 use std::collections::BTreeMap;
 
@@ -263,7 +263,11 @@ fn budish_cancel_priority_lp_wins_nearly_all() {
     }
 }
 
-/// Shrinking every latency in proportion must not change the sniper take (FCFS).
+/// In races isolated from price drift, shrinking every latency in proportion must not change
+/// the sniper take (FCFS). Spec section 13 scopes the check to isolated races: with diffusion on,
+/// the price clock is not scaled, so a faster market sees fewer moves per race (DECISIONS 39).
+/// This runs on the isolated setup of [`budish`]: jumps only, about one every 5 s, so no race
+/// overlaps another price move.
 ///
 /// Sniper take here is the snipers' gain on their fills against the true price at the moment of
 /// the fill (markout horizon 0): the stale-quote prize, without the noise of marking their
@@ -272,7 +276,7 @@ fn budish_cancel_priority_lp_wins_nearly_all() {
 /// independent sample of the same process. Tolerance: 4 standard errors of the difference of
 /// two 8-seed totals, estimated from the per-seed spread of the unscaled run.
 #[test]
-fn budish_latency_scaling_keeps_sniper_take() {
+fn budish_isolated_races_latency_scaling_keeps_sniper_take() {
     let take = |num: u64, den: u64| -> Vec<f64> {
         let mut s = budish(3, OrderingRule::Fcfs, 0, true);
         s.scale_latencies(num, den);
