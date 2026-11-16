@@ -10,6 +10,8 @@ the paired differences in LP loss separate every pair of rules in a B > 0 group.
 import argparse
 from pathlib import Path
 
+import random
+
 import polars as pl
 
 HERE = Path(__file__).resolve().parent
@@ -62,6 +64,21 @@ def main() -> None:
     print(head)
     a.out.mkdir(parents=True, exist_ok=True)
     head.write_csv(a.out / f"headline_b{a.block_ms}.csv")
+
+    # Dollar LP loss (not in the summary file): the bps value divides by a volume that itself
+    # depends on the rule, so the dollars are the check on the ranking.
+    r = pl.read_parquet(a.data / "grid_runs.parquet").filter(
+        (pl.col("block_ms") == a.block_ms)
+        & ((pl.col("speed_gap") - a.gap).abs() < 1e-9)
+        & (pl.col("snipers") == a.snipers)
+    )
+    print("\nLP loss to snipers in dollars (weekday: the hour; Monday: the first W), mean [95% CI]:")
+    for (regime, rule), g in sorted(r.group_by(["regime", "rule"]), key=lambda x: x[0]):
+        col = "lp_loss_usd" if regime == "weekday" else "monday_lp_loss_usd"
+        xs = g[col].to_list()
+        rng = random.Random(7)
+        ms = sorted(sum(rng.choice(xs) for _ in xs) / len(xs) for _ in range(2000))
+        print(f"  {regime:<12} {rule:<16} ${sum(xs) / len(xs):8.2f} [{ms[50]:.2f}, {ms[1949]:.2f}]")
 
     p = pl.read_parquet(a.data / "grid_pairs.parquet").filter(
         (pl.col("metric") == "lp_loss_bps") & (pl.col("block_ms") > 0)
