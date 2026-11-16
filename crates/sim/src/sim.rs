@@ -340,6 +340,9 @@ impl Sim {
             Ev::Observe { idx, obs } => self.observe(idx, obs),
             Ev::Submit { idx, kind } => {
                 let agent = self.agents[idx].id;
+                if let MsgKind::Cancel { order_id, .. } = kind {
+                    self.races.on_cancel_arrival(order_id, now);
+                }
                 match self.sequencer.accept(now, agent, kind) {
                     Accepted::Now { block } => {
                         self.process(LogRecord {

@@ -1,8 +1,11 @@
 //! Race counting (spec section 10).
 //!
 //! A race starts when a price move (a logged `Tick`) makes a resting LP quote stale by at least
-//! θ, and ends when that quote is filled by a sniper (sniper wins) or cancelled (LP wins).
-//! Built only from the input log and the engine's events, so a replay gives the same races.
+//! θ, and ends when that quote is filled by a sniper (sniper wins) or cancelled (LP wins). A
+//! quote whose cancel had already reached the sequencer before the price move does not start a
+//! race: the LP had already acted, and with B > 0 the cancel is only waiting for its block.
+//! Built only from the input log and the engine's events (the cancel's arrival time is its
+//! record's `t_ns`), so a replay gives the same races.
 
 use std::collections::BTreeMap;
 
@@ -74,6 +77,8 @@ pub struct RaceTracker {
     races: Vec<Race>,
     last_episode_seq: Option<u64>,
     episodes: u64,
+    /// Earliest time a cancel for each order reached the sequencer, if one has.
+    cancel_arrival: BTreeMap<OrderId, u64>,
 }
 
 impl RaceTracker {
@@ -86,7 +91,32 @@ impl RaceTracker {
             races: Vec::new(),
             last_episode_seq: None,
             episodes: 0,
+            cancel_arrival: BTreeMap::new(),
         }
+    }
+
+    /// A cancel for `order_id` reached the sequencer at `t_ns`. The simulation calls this when
+    /// the sequencer accepts the cancel (it may wait in an open block); a replay can instead
+    /// feed every `Cancel` record's `t_ns` up front, which is equivalent because only arrivals
+    /// before a tick matter at that tick.
+    pub fn on_cancel_arrival(&mut self, order_id: OrderId, t_ns: u64) {
+        let t = self.cancel_arrival.entry(order_id).or_insert(t_ns);
+        *t = (*t).min(t_ns);
+    }
+
+    /// Feed the arrival times of every cancel in a log, for a replay.
+    pub fn with_cancel_arrivals(mut self, records: &[LogRecord]) -> Self {
+        for r in records {
+            if let engine::MsgKind::Cancel { order_id, .. } = r.kind {
+                self.on_cancel_arrival(order_id, r.t_ns);
+            }
+        }
+        self
+    }
+
+    fn forget(&mut self, order_id: OrderId) {
+        self.quotes.remove(&order_id);
+        self.cancel_arrival.remove(&order_id);
     }
 
     fn class(&self, agent: AgentId) -> Option<AccountClass> {
@@ -131,7 +161,7 @@ impl RaceTracker {
                         };
                         self.close(maker_order, rec.t_ns, outcome);
                         if maker_remaining == 0 {
-                            self.quotes.remove(&maker_order);
+                            self.forget(maker_order);
                         } else if let Some(q) = self.quotes.get_mut(&maker_order) {
                             q.qty = maker_remaining;
                         }
@@ -139,7 +169,7 @@ impl RaceTracker {
                     if let Some(q) = self.quotes.get_mut(&taker_order) {
                         q.qty -= qty;
                         if q.qty == 0 {
-                            self.quotes.remove(&taker_order);
+                            self.forget(taker_order);
                         }
                     }
                 }
@@ -148,10 +178,14 @@ impl RaceTracker {
                 } => {
                     // Quotes are GTC, so the reason is a user cancel or a self-trade cancel:
                     // either way the LP's own message removed the quote.
-                    if self.quotes.remove(&order_id).is_some() {
+                    if self.quotes.contains_key(&order_id) {
                         debug_assert_ne!(reason, CancelReason::IocRemainder);
+                        self.forget(order_id);
                         self.close(order_id, rec.t_ns, RaceOutcome::LpWon);
                     }
+                }
+                EventKind::CancelMissed { order_id, .. } => {
+                    self.cancel_arrival.remove(&order_id);
                 }
                 EventKind::Tick { px } => self.on_tick(rec, px),
                 _ => {}
@@ -163,6 +197,10 @@ impl RaceTracker {
         let mut started = false;
         for (&id, q) in &self.quotes {
             if self.open.contains_key(&id) {
+                continue;
+            }
+            // The LP's cancel was already at the sequencer before this move: no race.
+            if self.cancel_arrival.get(&id).is_some_and(|&t| t < rec.t_ns) {
                 continue;
             }
             let staleness = match q.side {
@@ -290,6 +328,52 @@ mod tests {
         let s = rt.stats();
         assert_eq!((s.sniper_won, s.lp_won), (0, 1));
         assert_eq!(s.lp_win_rate(), (1, 1));
+    }
+
+    /// B > 0: the LP's cancel reached the sequencer at 2 ms and waits for its block; the tick at
+    /// 3 ms is logged first (ticks never wait). The quote is not a race, whatever happens next.
+    #[test]
+    fn cancel_already_at_sequencer_does_not_start_a_race() {
+        let at = |seq, t_ms: u64, agent, kind| LogRecord {
+            seq,
+            t_ns: t_ms * 1_000_000,
+            block: 0,
+            agent,
+            kind,
+        };
+        let log = [
+            at(1, 1, LP, ask(101)),
+            at(2, 3, 0, MsgKind::Tick { px_ticks: 105 }),
+            at(3, 2, LP, MsgKind::Cancel { order_id: 1 }),
+        ];
+        // Online (the simulation reports the arrival when the sequencer accepts it) and from
+        // the log up front (a replay) give the same answer.
+        let mut online = RaceTracker::new(1, classes());
+        online.on_cancel_arrival(1, 2_000_000);
+        let replay = RaceTracker::new(1, classes()).with_cancel_arrivals(&log);
+        for mut rt in [online, replay] {
+            let mut e = Engine::new();
+            for rec in &log {
+                let ev = e.on_message(rec);
+                rt.on_record(rec, &ev);
+            }
+            assert_eq!(rt.stats(), RaceStats::default());
+        }
+
+        // A cancel that reaches the sequencer after the move is a race (the LP wins it).
+        let mut rt = RaceTracker::new(1, classes());
+        let mut e = Engine::new();
+        let log = [
+            at(1, 1, LP, ask(101)),
+            at(2, 3, 0, MsgKind::Tick { px_ticks: 105 }),
+            at(3, 4, LP, MsgKind::Cancel { order_id: 1 }),
+        ];
+        rt = rt.with_cancel_arrivals(&log);
+        for rec in &log {
+            let ev = e.on_message(rec);
+            rt.on_record(rec, &ev);
+        }
+        assert_eq!(rt.stats().lp_won, 1);
     }
 
     #[test]
