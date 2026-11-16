@@ -72,7 +72,7 @@ A run is a pure function: (config, seed) → input log → fills, ledger and met
 | `t_ns` | u64 | Virtual time the sequencer received it |
 | `block` | u64 | Block it was sealed in |
 | `agent` | u32 | Sender. Used for the ledger and metrics, never for matching. |
-| `kind` | enum | `New{side, px_ticks: i64, qty_lots: u64, tif: GTC\|IOC, priority_fee: u64}`, `Cancel{order_id}`, `Tick{px_ticks}` |
+| `kind` | enum | `New{side, px_ticks: i64, qty_lots: u64, tif: GTC\|IOC, priority_fee: u64}`, `Cancel{order_id, priority_fee: u64}`, `Tick{px_ticks}` |
 
 `Tick` is a Nasdaq price update. The engine passes it through untouched; it is logged so the dashboard and the metrics replay exactly.
 
@@ -165,7 +165,7 @@ Every fill is valued against the Nasdaq price v, so each market metric is a tran
 \mathrm{PnL}_a = \sum_{f \ni a} d_a(f)\, q_f \,\bigl(v_{t_f + h} - p_f\bigr) - \mathrm{fees}_a, \qquad \sum_a \mathrm{PnL}_a = 0
 ```
 
-**A race** starts when a price move makes a resting quote stale by at least θ, and ends when that quote is either filled by a sniper (sniper wins) or cancelled (LP wins).
+**A race** starts when a price move makes a resting quote stale by at least θ, and ends when that quote is either filled by a sniper (sniper wins) or cancelled (LP wins). A quote whose cancel had already reached the sequencer before the price move doesn't start a race.
 
 | Market metric | Definition | Reported as |
 | --- | --- | --- |
@@ -244,7 +244,7 @@ No number reaches a slide until the engine passes these checks, in order.
 
 1. **Invariants (proptest).** The book is never crossed after a message is processed. Quantity is conserved. Total PnL is zero. The same seed gives the same hash.
 2. **Hand-written logs.** About 20 short logs with fills worked out by hand: partial fills across levels, IOC remainders, a cancel racing a fill, self-trade, and each ordering rule sorting the same block.
-3. **Budish check.** Under first come, first served with N equally fast snipers and one LP, the LP wins about 1 race in N+1. Shrinking every latency in proportion must not change the sniper take. Under cancel priority with every message in one block, the LP wins nearly every race. If any check fails, find the bug before going further.
+3. **Budish check.** Under first come, first served with N equally fast snipers and one LP, the LP wins about 1 race in N+1. In races isolated from price drift, shrinking every latency in proportion must not change the sniper take. Under cancel priority with every message in one block, the LP wins nearly every race. If any check fails, find the bug before going further.
 
 **Experiment grid**
 
@@ -256,7 +256,7 @@ No number reaches a slide until the engine passes these checks, in order.
 | Number of snipers | 1, 3, 10 |
 | Regime | weekday hour; Friday close into the Monday open |
 
-That's 216 cells. Under first come, first served, the B levels differ only in fill delay. Start with 200 seeds per cell and adjust after a pilot measures the variance. All ordering rules run on the same seeds, so we compare paired differences. Report the mean with a 95% bootstrap interval.
+That's 216 cells. Under first come, first served, the B levels should differ only in fill delay; phase 3 checks this before running the grid. Start with 200 seeds per cell and adjust after a pilot measures the variance. All ordering rules run on the same seeds, so we compare paired differences. Report the mean with a 95% bootstrap interval.
 
 ## 14. Dashboard and talk flow
 
