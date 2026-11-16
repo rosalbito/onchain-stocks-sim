@@ -121,3 +121,31 @@ impl Ledger {
         self.agents.get(&id)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use engine::MsgKind;
+
+    #[test]
+    fn sender_pays_priority_fee_on_inclusion_for_cancels_too() {
+        let agents: BTreeMap<AgentId, AccountClass> = [(1, AccountClass::Lp)].into();
+        let mut l = Ledger::new(1, &agents);
+        let rec = |kind| LogRecord {
+            seq: 1,
+            t_ns: 0,
+            block: 0,
+            agent: 1,
+            kind,
+        };
+        // A cancel for an order that does not exist still pays: inclusion, not success.
+        l.on_included(&rec(MsgKind::Cancel {
+            order_id: 99,
+            priority_fee: 7_000,
+        }));
+        assert_eq!(l.account(1).unwrap().balance().cash_delta, -7_000);
+        assert_eq!(l.priority_fees, 7_000);
+        let pnl = metrics::zero_sum_check(&l.balances(), 10_000).unwrap();
+        assert_eq!(pnl.get(AccountClass::Chain), 7_000);
+    }
+}

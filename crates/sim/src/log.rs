@@ -8,7 +8,8 @@ use engine::{Engine, EventKind, LogRecord, MsgKind, Side, Tif};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
-pub const FORMAT_VERSION: u32 = 1;
+/// 2: `Cancel` carries `priority_fee` (spec rev 36).
+pub const FORMAT_VERSION: u32 = 2;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct LogFile {
@@ -43,6 +44,7 @@ pub enum WireKind {
     },
     Cancel {
         order_id: u64,
+        priority_fee: u64,
     },
     Tick {
         px_ticks: i64,
@@ -80,7 +82,13 @@ impl From<&LogRecord> for WireRecord {
                 },
                 priority_fee,
             },
-            MsgKind::Cancel { order_id } => WireKind::Cancel { order_id },
+            MsgKind::Cancel {
+                order_id,
+                priority_fee,
+            } => WireKind::Cancel {
+                order_id,
+                priority_fee,
+            },
             MsgKind::Tick { px_ticks } => WireKind::Tick { px_ticks },
         };
         WireRecord {
@@ -115,7 +123,13 @@ impl From<&WireRecord> for LogRecord {
                 },
                 priority_fee,
             },
-            WireKind::Cancel { order_id } => MsgKind::Cancel { order_id },
+            WireKind::Cancel {
+                order_id,
+                priority_fee,
+            } => MsgKind::Cancel {
+                order_id,
+                priority_fee,
+            },
             WireKind::Tick { px_ticks } => MsgKind::Tick { px_ticks },
         };
         LogRecord {

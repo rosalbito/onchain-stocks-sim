@@ -204,7 +204,8 @@ pub struct LpCfg {
     pub inventory_cap_lots: i64,
     pub weekend_policy: WeekendPolicy,
     pub weekend_widen: i64,
-    /// PGA bid on cancels, as basis points of exposure. Must be 0: see docs/DECISIONS.md.
+    /// PGA bid on cancels, as basis points of exposure (spec section 8: β; 10_000 = β 1.0).
+    /// Exposure is max(0, staleness at the LP's seen price) × lots; see docs/DECISIONS.md.
     pub beta_bps: u64,
 }
 
@@ -310,13 +311,6 @@ impl Scenario {
             if l.jitter_us > l.base_us {
                 return Err(format!("{name}: jitter larger than base latency"));
             }
-        }
-        if self.lp.beta_bps != 0 {
-            return Err(
-                "lp.beta_bps must be 0: the spec's Cancel record has no priority_fee \
-                        field, so cancels cannot carry a PGA bid (see docs/DECISIONS.md)"
-                    .into(),
-            );
         }
         if self.price.jump_min_ticks < 0 || self.price.jump_max_ticks < self.price.jump_min_ticks {
             return Err("price: bad jump size range".into());

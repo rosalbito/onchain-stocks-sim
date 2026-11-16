@@ -32,7 +32,10 @@ fn ioc(side: Side, px: Px, qty: Qty) -> MsgKind {
 }
 
 fn cancel(order_id: OrderId) -> MsgKind {
-    MsgKind::Cancel { order_id }
+    MsgKind::Cancel {
+        order_id,
+        priority_fee: 0,
+    }
 }
 
 /// Run a log where record i gets seq i+1. Returns the engine and every event.

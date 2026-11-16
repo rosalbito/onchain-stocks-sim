@@ -72,7 +72,7 @@ impl Engine {
 
         match msg.kind {
             MsgKind::Tick { px_ticks } => push(&mut out, EventKind::Tick { px: px_ticks }),
-            MsgKind::Cancel { order_id } => self.cancel(seq, msg.agent, order_id, &mut out),
+            MsgKind::Cancel { order_id, .. } => self.cancel(seq, msg.agent, order_id, &mut out),
             MsgKind::New {
                 side,
                 px_ticks,

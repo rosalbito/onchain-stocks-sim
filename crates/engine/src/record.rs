@@ -44,11 +44,11 @@ pub enum MsgKind {
     },
     Cancel {
         order_id: OrderId,
+        /// PGA bid, paid by the sender when the cancel is included (spec section 4).
+        priority_fee: u64,
     },
     /// A Nasdaq price update. Ignored by matching, echoed as an event.
-    Tick {
-        px_ticks: Px,
-    },
+    Tick { px_ticks: Px },
 }
 
 impl MsgKind {
@@ -58,8 +58,10 @@ impl MsgKind {
 
     pub fn priority_fee(&self) -> u64 {
         match self {
-            MsgKind::New { priority_fee, .. } => *priority_fee,
-            _ => 0,
+            MsgKind::New { priority_fee, .. } | MsgKind::Cancel { priority_fee, .. } => {
+                *priority_fee
+            }
+            MsgKind::Tick { .. } => 0,
         }
     }
 }

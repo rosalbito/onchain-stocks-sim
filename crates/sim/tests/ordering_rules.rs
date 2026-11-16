@@ -29,7 +29,14 @@ fn block() -> Vec<Pending> {
         (8, S1, ioc_buy(10_003, 10, 40_000)), // sniper 1: limit seen - θ, bids 4 cents
         (9, S2, ioc_buy(10_003, 10, 60_000)), // sniper 2: one ms slower, bids 6 cents
         (15, TRADER, ioc_buy(10_007, 2, 0)),  // a regular trader
-        (23, LP, MsgKind::Cancel { order_id: 1 }),
+        (
+            23,
+            LP,
+            MsgKind::Cancel {
+                order_id: 1,
+                priority_fee: 0,
+            },
+        ),
         (23, LP, ioc_buy(10_003, 1, 60_000)), // same arrival as the cancel; same fee as S2
     ];
     raw.iter()
@@ -153,7 +160,10 @@ fn sequencer_forms_blocks_by_arrival_time() {
     // B = 100 ms: arrivals in [0, 100) go to block 0, [100, 200) to block 1. The first message
     // of a block asks for its close at (k + 1)B.
     let mut s = Sequencer::new(OrderingRule::Fcfs, 100);
-    let kind = MsgKind::Cancel { order_id: 1 };
+    let kind = MsgKind::Cancel {
+        order_id: 1,
+        priority_fee: 0,
+    };
     assert_eq!(
         s.accept(8 * MS, S1, kind),
         Accepted::Buffered {
@@ -180,4 +190,50 @@ fn sequencer_forms_blocks_by_arrival_time() {
     let mut s = Sequencer::new(OrderingRule::Fcfs, 0);
     assert_eq!(s.accept(5, S1, kind), Accepted::Now { block: 0 });
     assert_eq!(s.accept(5, S2, kind), Accepted::Now { block: 1 });
+}
+
+/// Spec section 4 (rev 36): a cancel carries a priority fee, and PGA sorts it like any other
+/// message. An LP that outbids the snipers on its cancel wins the stale ask.
+#[test]
+fn pga_sorts_cancels_by_their_fee() {
+    let mut b = block();
+    for p in b.iter_mut() {
+        if let MsgKind::Cancel { order_id, .. } = p.kind {
+            p.kind = MsgKind::Cancel {
+                order_id,
+                priority_fee: 70_000,
+            };
+        }
+    }
+    sort_block(OrderingRule::Pga, &mut b);
+    assert!(b[0].kind.is_cancel());
+    assert_eq!(b[0].kind.priority_fee(), 70_000);
+}
+
+/// β ≠ 0 runs end to end under PGA: the LP pays fees on its cancels and the books balance.
+#[test]
+fn lp_beta_runs_and_pays_the_chain() {
+    let mut s = sim::Scenario {
+        name: "beta".into(),
+        duration_s: 600,
+        ..sim::Scenario::default()
+    };
+    s.sequencer.rule = OrderingRule::Pga;
+    s.sequencer.block_ms = 250;
+    s.price.jump_rate_per_s = 0.05;
+    let base = sim::run(&s, 1).unwrap().priority_fees;
+    s.lp.beta_bps = 10_000;
+    let r = sim::run(&s, 1).unwrap();
+    let lp_fees: u64 = r
+        .records
+        .iter()
+        .filter(|x| r.agents.get(&x.agent) == Some(&metrics::AccountClass::Lp))
+        .map(|x| x.kind.priority_fee())
+        .sum();
+    assert!(lp_fees > 0);
+    assert!(
+        r.priority_fees > base - base / 2,
+        "fees still flow to the chain"
+    );
+    assert_eq!(r.pnl.by_class.values().sum::<i128>(), 0);
 }

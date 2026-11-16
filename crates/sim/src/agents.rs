@@ -40,6 +40,7 @@ fn new_order(side: Side, px: Px, qty: Qty, tif: Tif, priority_fee: u64) -> MsgKi
 #[derive(Debug, Clone, Copy)]
 struct LiveQuote {
     side: Side,
+    px: Px,
     qty: Qty,
     /// Quote generation it was posted in. Older generations are obsolete.
     generation: u64,
@@ -61,10 +62,14 @@ struct PendingQuote {
 /// Order ids are the `seq` of the `New`, so the LP learns them from the `Accepted` events it
 /// sees. Orders it has sent but not yet seen accepted are tracked as pending; if they are
 /// obsolete by the time their ack arrives, they are cancelled then.
+///
+/// Under PGA it bids β × exposure on each cancel, where exposure is what a sniper could take
+/// from that quote at the last price the LP saw: max(0, staleness) × remaining lots.
 #[derive(Debug)]
 pub struct Lp {
     id: AgentId,
     cfg: LpCfg,
+    pga: bool,
     seen_px: Option<Px>,
     center: Option<Px>,
     closed: bool,
@@ -77,10 +82,11 @@ pub struct Lp {
 }
 
 impl Lp {
-    pub fn new(id: AgentId, cfg: &LpCfg) -> Self {
+    pub fn new(id: AgentId, cfg: &LpCfg, pga: bool) -> Self {
         Self {
             id,
             cfg: cfg.clone(),
+            pga,
             seen_px: None,
             center: None,
             closed: false,
@@ -127,13 +133,40 @@ impl Lp {
         !(self.closed && self.cfg.weekend_policy == WeekendPolicy::Withdraw)
     }
 
-    fn requote(&mut self, p: Px, out: &mut Vec<MsgKind>) {
-        for (&id, q) in self.live.iter_mut() {
-            if !q.cancel_sent {
-                q.cancel_sent = true;
-                out.push(MsgKind::Cancel { order_id: id });
-            }
+    /// The PGA bid on a cancel: β × exposure, in cash units. Zero unless the rule is PGA.
+    fn cancel_fee(&self, q: &LiveQuote) -> u64 {
+        let (Some(v), true) = (self.seen_px, self.pga) else {
+            return 0;
+        };
+        let staleness = match q.side {
+            Side::Sell => v - q.px,
+            Side::Buy => q.px - v,
+        };
+        let exposure = staleness.max(0) as i128 * q.qty as i128;
+        (exposure * CASH_PER_TICK_LOT * self.cfg.beta_bps as i128 / 10_000) as u64
+    }
+
+    /// Cancel every live quote of a generation older than `before` (or all, with `u64::MAX`)
+    /// that has no cancel in flight yet.
+    fn cancel_live(&mut self, before: u64, out: &mut Vec<MsgKind>) {
+        let ids: Vec<OrderId> = self
+            .live
+            .iter()
+            .filter(|(_, q)| !q.cancel_sent && q.generation < before)
+            .map(|(&id, _)| id)
+            .collect();
+        for id in ids {
+            let priority_fee = self.cancel_fee(&self.live[&id]);
+            self.live.get_mut(&id).expect("live").cancel_sent = true;
+            out.push(MsgKind::Cancel {
+                order_id: id,
+                priority_fee,
+            });
         }
+    }
+
+    fn requote(&mut self, p: Px, out: &mut Vec<MsgKind>) {
+        self.cancel_live(u64::MAX, out);
         // Everything still pending becomes obsolete.
         self.generation += 1;
         self.center = Some(p);
@@ -212,6 +245,7 @@ impl Lp {
                         order_id,
                         LiveQuote {
                             side,
+                            px,
                             qty,
                             generation: p.generation,
                             cancel_sent: false,
@@ -263,12 +297,7 @@ impl Lp {
             }
         }
         // Orders acked after a requote are obsolete: cancel them now that their ids are known.
-        for (&id, q) in self.live.iter_mut() {
-            if q.generation < self.generation && !q.cancel_sent {
-                q.cancel_sent = true;
-                out.push(MsgKind::Cancel { order_id: id });
-            }
-        }
+        self.cancel_live(self.generation, out);
         if !self.quoting_allowed() {
             return;
         }
@@ -436,7 +465,7 @@ mod tests {
 
     #[test]
     fn lp_quotes_spec_ladder_and_requotes_on_move() {
-        let mut lp = Lp::new(1, &LpCfg::default());
+        let mut lp = Lp::new(1, &LpCfg::default(), false);
         let out = lp.observe(&Obs::Price(10_000));
         assert_eq!(
             out,
@@ -476,15 +505,68 @@ mod tests {
         assert_eq!(
             &out[..4],
             &(1..=4)
-                .map(|id| MsgKind::Cancel { order_id: id })
+                .map(|id| MsgKind::Cancel {
+                    order_id: id,
+                    priority_fee: 0
+                })
                 .collect::<Vec<_>>()[..]
         );
         assert_eq!(out.len(), 8);
     }
 
     #[test]
+    fn lp_bids_beta_times_exposure_on_cancels_under_pga() {
+        let cfg = LpCfg {
+            beta_bps: 5_000,
+            ..LpCfg::default()
+        };
+        for pga in [false, true] {
+            let mut lp = Lp::new(1, &cfg, pga);
+            let out = lp.observe(&Obs::Price(10_000));
+            let acks: Vec<Event> = out
+                .iter()
+                .enumerate()
+                .map(|(i, m)| match *m {
+                    MsgKind::New {
+                        side,
+                        px_ticks,
+                        qty_lots,
+                        tif,
+                        ..
+                    } => ev(EventKind::Accepted {
+                        order_id: i as u64 + 1,
+                        agent: 1,
+                        side,
+                        px: px_ticks,
+                        qty: qty_lots,
+                        tif,
+                    }),
+                    _ => unreachable!(),
+                })
+                .collect();
+            lp.observe(&Obs::Market(acks.into()));
+            // Price jumps to 100.05: the asks at 100.01 (10 lots) and 100.02 (5 lots) are stale
+            // by 4 and 3 ticks; the bids are not. Exposure 40 and 15 tick·lots; β = 0.5.
+            let fees: Vec<u64> = lp
+                .observe(&Obs::Price(10_005))
+                .iter()
+                .filter_map(|m| match *m {
+                    MsgKind::Cancel { priority_fee, .. } => Some(priority_fee),
+                    _ => None,
+                })
+                .collect();
+            let want = if pga {
+                vec![0, 0, 200_000, 75_000]
+            } else {
+                vec![0; 4]
+            };
+            assert_eq!(fees, want, "pga={pga}");
+        }
+    }
+
+    #[test]
     fn lp_widens_on_close_and_cancels_late_acks() {
-        let mut lp = Lp::new(1, &LpCfg::default());
+        let mut lp = Lp::new(1, &LpCfg::default(), false);
         lp.observe(&Obs::Price(10_000));
         // Close before any ack: the four pending quotes become obsolete; widened quotes posted.
         let out = lp.observe(&Obs::Closed);
@@ -501,7 +583,10 @@ mod tests {
         });
         assert_eq!(
             lp.observe(&Obs::Market(vec![ack].into())),
-            vec![MsgKind::Cancel { order_id: 7 }]
+            vec![MsgKind::Cancel {
+                order_id: 7,
+                priority_fee: 0
+            }]
         );
     }
 
@@ -511,7 +596,7 @@ mod tests {
             inventory_cap_lots: 20,
             ..LpCfg::default()
         };
-        let mut lp = Lp::new(1, &cfg);
+        let mut lp = Lp::new(1, &cfg, false);
         lp.inventory = 10; // 10 + 15 > 20: no bids
         let out = lp.observe(&Obs::Price(10_000));
         assert!(out.iter().all(|m| matches!(

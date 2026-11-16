@@ -62,6 +62,7 @@ fn to_log(ops: &[Op]) -> Vec<LogRecord> {
                     agent,
                     MsgKind::Cancel {
                         order_id: seq.saturating_sub(back),
+                        priority_fee: 0,
                     },
                 ),
                 Op::Tick { px } => (0, MsgKind::Tick { px_ticks: px }),

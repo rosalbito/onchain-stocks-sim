@@ -309,7 +309,13 @@ mod tests {
             (LP, ask(101)),
             (0, MsgKind::Tick { px_ticks: 102 }),
             (SNIPER, snipe(101)),
-            (LP, MsgKind::Cancel { order_id: 1 }),
+            (
+                LP,
+                MsgKind::Cancel {
+                    order_id: 1,
+                    priority_fee: 0,
+                },
+            ),
         ]);
         let s = rt.stats();
         assert_eq!((s.sniper_won, s.lp_won, s.episodes), (1, 0, 1));
@@ -322,7 +328,13 @@ mod tests {
         let rt = feed(&[
             (LP, ask(101)),
             (0, MsgKind::Tick { px_ticks: 105 }),
-            (LP, MsgKind::Cancel { order_id: 1 }),
+            (
+                LP,
+                MsgKind::Cancel {
+                    order_id: 1,
+                    priority_fee: 0,
+                },
+            ),
             (SNIPER, snipe(104)),
         ]);
         let s = rt.stats();
@@ -344,7 +356,15 @@ mod tests {
         let log = [
             at(1, 1, LP, ask(101)),
             at(2, 3, 0, MsgKind::Tick { px_ticks: 105 }),
-            at(3, 2, LP, MsgKind::Cancel { order_id: 1 }),
+            at(
+                3,
+                2,
+                LP,
+                MsgKind::Cancel {
+                    order_id: 1,
+                    priority_fee: 0,
+                },
+            ),
         ];
         // Online (the simulation reports the arrival when the sequencer accepts it) and from
         // the log up front (a replay) give the same answer.
@@ -366,7 +386,15 @@ mod tests {
         let log = [
             at(1, 1, LP, ask(101)),
             at(2, 3, 0, MsgKind::Tick { px_ticks: 105 }),
-            at(3, 4, LP, MsgKind::Cancel { order_id: 1 }),
+            at(
+                3,
+                4,
+                LP,
+                MsgKind::Cancel {
+                    order_id: 1,
+                    priority_fee: 0,
+                },
+            ),
         ];
         rt = rt.with_cancel_arrivals(&log);
         for rec in &log {
