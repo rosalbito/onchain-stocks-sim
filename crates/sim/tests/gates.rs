@@ -331,6 +331,11 @@ fn metrics_agree_with_the_simulation() {
                 assert_eq!(m.notional_tick_lots, r.counts.notional_tick_lots, "{ctx}");
                 assert_eq!(m.taker_fees, r.taker_fees, "{ctx}");
                 assert_eq!(m.priority_fees, r.priority_fees, "{ctx}");
+                assert_eq!(
+                    m.priority_fees_by.iter().sum::<i128>(),
+                    m.priority_fees,
+                    "{ctx}"
+                );
                 for h in 0..NH {
                     assert_eq!(m.class_pnl[h].iter().sum::<i128>(), 0, "{ctx} h={h}");
                 }

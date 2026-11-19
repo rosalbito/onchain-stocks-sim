@@ -205,6 +205,8 @@ pub struct MondayOpen {
     pub lp_loss_to_snipers: i128,
     /// Priority fees paid by anyone on messages processed in the window, cash.
     pub chain_fees: i128,
+    /// The part of `chain_fees` the LP paid (its cancel bids), cash.
+    pub chain_fees_lp: i128,
     /// Σ p · q over all fills in the window, tick·lots (the window's volume).
     pub notional_tick_lots: i128,
 }
@@ -371,6 +373,8 @@ pub struct Metrics {
     pub taker_fees: i128,
     /// Priority fees paid to the chain (chain take), cash units.
     pub priority_fees: i128,
+    /// Priority fees by the class that paid them, cash units. Sums to `priority_fees`.
+    pub priority_fees_by: [i128; NC],
     pub races: RaceStats,
     pub lp: LpSpread,
     /// Regular traders: Σ q · d · (p − v at decision), d = +1 for a buy, tick·lots (a cost).
@@ -392,6 +396,11 @@ impl Metrics {
     /// Sniper take: PnL summed over snipers, cash units.
     pub fn sniper_take(&self, h: usize) -> i128 {
         self.pnl(h, AccountClass::Sniper)
+    }
+
+    /// Priority fees one class paid, cash units.
+    pub fn priority_fees_of(&self, c: AccountClass) -> i128 {
+        self.priority_fees_by[ci(c)]
     }
 
     /// LP loss to snipers: the snipers' gross gain on fills against LPs, tick·lots.
@@ -498,6 +507,7 @@ pub fn measure(inp: &MeasureInput) -> Metrics {
         flow: [[[0; NC]; NC]; NH],
         taker_fees: 0,
         priority_fees: 0,
+        priority_fees_by: [0; NC],
         races: RaceStats::default(),
         lp: LpSpread::default(),
         regular_cost: 0,
@@ -531,6 +541,7 @@ pub fn measure(inp: &MeasureInput) -> Metrics {
     let mut window_lp_loss = 0i128;
     let mut window_notional = 0i128;
     let mut window_chain = 0i128;
+    let mut window_chain_lp = 0i128;
     let in_window = |t: u64| {
         inp.weekend
             .is_some_and(|w| t >= w.reopen_ns && t < w.reopen_ns + inp.monday_window_ns)
@@ -580,12 +591,16 @@ pub fn measure(inp: &MeasureInput) -> Metrics {
         if fee > 0 {
             m.priority_fees += fee;
             let c = class(rec.agent);
+            m.priority_fees_by[ci(c)] += fee;
             for h in 0..NH {
                 m.class_pnl[h][ci(c)] -= fee;
                 m.class_pnl[h][ci(AccountClass::Chain)] += fee;
             }
             if in_window(t) {
                 window_chain += fee;
+                if c == AccountClass::Lp {
+                    window_chain_lp += fee;
+                }
                 if c == AccountClass::Sniper {
                     window_pnl -= fee;
                 }
@@ -716,6 +731,7 @@ pub fn measure(inp: &MeasureInput) -> Metrics {
             sniper_pnl: window_pnl,
             lp_loss_to_snipers: window_lp_loss,
             chain_fees: window_chain,
+            chain_fees_lp: window_chain_lp,
             notional_tick_lots: window_notional,
             ..gap.map(|g| g.m).unwrap_or_default()
         });
@@ -1123,6 +1139,9 @@ mod tests {
             (12 + 40) * CASH_PER_TICK_LOT - 60_018 - 100_060 - 51_000
         );
         assert_eq!(mo.chain_fees, 57_000);
+        assert_eq!(mo.chain_fees_lp, 6_000);
+        assert_eq!(m.priority_fees_of(AccountClass::Lp), 6_000);
+        assert_eq!(m.priority_fees_of(AccountClass::Sniper), 51_000);
     }
 
     #[test]

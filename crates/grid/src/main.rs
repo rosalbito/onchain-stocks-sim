@@ -271,6 +271,11 @@ struct Row {
     monday_lp_kept_share: f64,
     monday_prize_usd: f64,
     monday_sniper_took_usd: f64,
+    /// The LP's own cancel bids over the span, and its race cost: LP loss to snipers plus those
+    /// bids (what stale quotes cost the LP once it bids under PGA).
+    chain_take_lp_span_usd: f64,
+    lp_cost_span_bps: f64,
+    lp_cost_span_usd: f64,
 }
 
 fn ratio(n: i128, d: i128) -> f64 {
@@ -323,6 +328,15 @@ fn row(cell: Cell, seed: u64, r: &sim::RunResult) -> Row {
     let span_f = |f: &dyn Fn((i128, i128, i128, i128)) -> f64| span.map_or(f64::NAN, f);
     let mo_f = |f: &dyn Fn(&metrics::measure::MondayOpen) -> f64| mo.as_ref().map_or(f64::NAN, f);
     let share = |(n, d): (i128, i128)| ratio(n, d);
+    let lp_fees: Option<i128> = match (cell.regime, mo) {
+        (Regime::Weekday, _) => Some(m.priority_fees_of(AccountClass::Lp)),
+        (Regime::Monday, Some(mo)) => Some(mo.chain_fees_lp),
+        (Regime::Monday, None) => None,
+    };
+    // (LP cost in cash, span volume in tick·lots)
+    let lp_cost = span
+        .zip(lp_fees)
+        .map(|(s, f)| (s.0 * CASH_PER_TICK_LOT + f, s.3));
     Row {
         cell,
         seed,
@@ -371,6 +385,9 @@ fn row(cell: Cell, seed: u64, r: &sim::RunResult) -> Row {
         monday_lp_kept_share: mo_f(&|mo| share(mo.lp_share())),
         monday_prize_usd: mo_f(&|mo| usd(mo.prize * CASH_PER_TICK_LOT)),
         monday_sniper_took_usd: mo_f(&|mo| usd(mo.sniper_took * CASH_PER_TICK_LOT)),
+        chain_take_lp_span_usd: lp_fees.map_or(f64::NAN, usd),
+        lp_cost_span_bps: lp_cost.map_or(f64::NAN, |(c, v)| bps(c, v * CASH_PER_TICK_LOT)),
+        lp_cost_span_usd: lp_cost.map_or(f64::NAN, |(c, _)| usd(c)),
     }
 }
 
@@ -405,6 +422,9 @@ fn metric_values(r: &Row) -> Vec<(&'static str, f64)> {
         ("monday_lp_kept_share", r.monday_lp_kept_share),
         ("monday_prize_usd", r.monday_prize_usd),
         ("monday_sniper_took_usd", r.monday_sniper_took_usd),
+        ("chain_take_lp_span_usd", r.chain_take_lp_span_usd),
+        ("lp_cost_span_bps", r.lp_cost_span_bps),
+        ("lp_cost_span_usd", r.lp_cost_span_usd),
     ]
 }
 
@@ -769,6 +789,9 @@ fn write_runs(rows: &[Row], path: &std::path::Path) -> Result<(), String> {
     t.push("monday_lp_kept_share", x(&|r| r.monday_lp_kept_share));
     t.push("monday_prize_usd", x(&|r| r.monday_prize_usd));
     t.push("monday_sniper_took_usd", x(&|r| r.monday_sniper_took_usd));
+    t.push("chain_take_lp_span_usd", x(&|r| r.chain_take_lp_span_usd));
+    t.push("lp_cost_span_bps", x(&|r| r.lp_cost_span_bps));
+    t.push("lp_cost_span_usd", x(&|r| r.lp_cost_span_usd));
     t.write(path)
 }
 
