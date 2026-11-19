@@ -156,6 +156,7 @@ input[type="number"] {
 .summary { flex: 1; min-width: 0; font-family: var(--font-mono); font-size: 0.74rem; color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .summary .rule { color: var(--accent-ink); }
 .right { display: flex; align-items: center; gap: 0.8rem; }
+.right #restart-btn, .right #setup-btn { padding: 0.3rem 0.65rem; }
 .clock { font-family: var(--font-mono); font-size: 0.95rem; color: var(--ink); white-space: nowrap; }
 .help-btn { width: 1.9rem; padding: 0.3rem 0; text-align: center; }
 

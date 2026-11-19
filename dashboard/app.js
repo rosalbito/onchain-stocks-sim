@@ -578,6 +578,8 @@ function renderProfits(s) {
 
 for (const b of document.querySelectorAll(".tabs button")) b.addEventListener("click", () => { page = b.dataset.page; dirty = true; });
 $("help-btn").addEventListener("click", () => { $("help").hidden = !$("help").hidden; });
+$("restart-btn").addEventListener("click", (e) => { send("restart"); toast("restart"); e.currentTarget.blur(); });
+$("setup-btn").addEventListener("click", (e) => { send("stop"); toast("stopped · back to setup"); e.currentTarget.blur(); });
 $("help").addEventListener("click", (e) => { if (e.target === $("help")) $("help").hidden = true; });
 document.addEventListener("keydown", keys);
 window.addEventListener("resize", () => { dirty = true; });
