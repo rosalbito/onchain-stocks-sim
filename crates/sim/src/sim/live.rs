@@ -173,6 +173,11 @@ impl Live {
         self.sim.feed.px()
     }
 
+    /// The true Nasdaq price at every change so far, hidden or not: (t_ns, px).
+    pub fn price_path(&self) -> &[(u64, Px)] {
+        &self.sim.path
+    }
+
     /// The last price published as a `Tick`.
     pub fn visible_px(&self) -> Px {
         self.sim.last_visible_px

@@ -96,6 +96,15 @@ pub enum StandbyMsg {
 
 pub const DEPTH: usize = 12;
 pub const RACES: usize = 10;
+/// True-price samples per frame, at fixed bucket boundaries (see `Frame::samples`).
+pub const SAMPLES: usize = 128;
+/// The price chart's resolution: a run is cut into this many buckets.
+pub const BUCKETS: u64 = 2_400;
+
+/// The chart bucket for a run of this length.
+pub fn bucket_ns(end_ns: u64) -> u64 {
+    (end_ns / BUCKETS).max(10_000_000)
+}
 
 #[derive(Debug, Clone, Copy, Default)]
 pub struct RaceRow {
@@ -126,7 +135,7 @@ pub struct RingStat {
     pub peak: u32,
 }
 
-pub const RING_NAMES: [&str; 4] = ["control in", "log writer", "standby", "ui bridge"];
+pub const RING_NAMES: [&str; 4] = ["control", "log", "standby", "ui"];
 
 /// One frame for the UI. Fixed size, so the ring holds values, not pointers.
 #[derive(Clone, Copy)]
@@ -142,6 +151,10 @@ pub struct Frame {
     pub stopped: bool,
     pub true_px: i64,
     pub visible_px: i64,
+    /// The true price at each bucket boundary crossed since the last frame (thinned to at most
+    /// `SAMPLES`), so a fast-forward still draws the path it went through.
+    pub samples: [(u64, i64); SAMPLES],
+    pub n_samples: u16,
     pub bids: [(i64, u64); DEPTH],
     pub asks: [(i64, u64); DEPTH],
     pub n_bids: u8,
@@ -214,6 +227,10 @@ struct EngineThread {
     /// Skip targets for this run: (virtual time to land at), ascending.
     marks: Vec<u64>,
     seek: Option<u64>,
+    /// Price path entries already sampled, the price then, and the next boundary to sample.
+    path_idx: usize,
+    path_px: i64,
+    next_sample: u64,
     carry: u128,
     last_tick: Instant,
     last_frame: Instant,
@@ -276,6 +293,9 @@ pub fn spawn(rings: Rings, start: Start) -> thread::JoinHandle<()> {
                 ended: false,
                 marks: Vec::new(),
                 seek: None,
+                path_idx: 0,
+                path_px: 0,
+                next_sample: 0,
                 carry: 0,
                 last_tick: now,
                 last_frame: now,
@@ -381,6 +401,9 @@ impl EngineThread {
         self.published = 0;
         self.ended = false;
         self.seek = None;
+        self.path_idx = 0;
+        self.path_px = cfg.price.start_px_ticks;
+        self.next_sample = 0;
         // Land a few seconds before each scheduled jump, a minute before the close and 30 s
         // before the reopen.
         let s = 1_000_000_000u64;
@@ -523,6 +546,31 @@ impl EngineThread {
         let live = &self.live;
         let fills_hash = hash_bytes(&live.fills_hash());
 
+        // The true price at every bucket boundary up to now.
+        let bucket = bucket_ns(live.end_ns());
+        let path = live.price_path();
+        let mut crossed = Vec::new();
+        while self.next_sample <= live.clock() {
+            while let Some(&(t, p)) = path.get(self.path_idx) {
+                if t > self.next_sample {
+                    break;
+                }
+                self.path_px = p;
+                self.path_idx += 1;
+            }
+            crossed.push((self.next_sample, self.path_px));
+            self.next_sample += bucket;
+        }
+        let stride = crossed.len().div_ceil(SAMPLES).max(1);
+        let mut samples = [(0, 0); SAMPLES];
+        let mut n_samples = 0;
+        for (i, s) in crossed.iter().enumerate() {
+            if (i % stride == 0 || i + 1 == crossed.len()) && n_samples < SAMPLES {
+                samples[n_samples] = *s;
+                n_samples += 1;
+            }
+        }
+
         let mut bids = [(0, 0); DEPTH];
         let mut asks = [(0, 0); DEPTH];
         let (b, a) = (live.depth(Side::Buy), live.depth(Side::Sell));
@@ -601,6 +649,8 @@ impl EngineThread {
             stopped: live.stopped(),
             true_px: live.true_px(),
             visible_px: live.visible_px(),
+            samples,
+            n_samples: n_samples as u16,
             bids,
             asks,
             n_bids: b.len().min(DEPTH) as u8,

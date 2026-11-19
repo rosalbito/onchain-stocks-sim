@@ -27,7 +27,7 @@ use sim::OrderingRule;
 use tokio::sync::watch;
 
 use crate::engine_thread::{
-    Frame, LogMsg, Outcome, RunInfo, StandbyMsg, UiMsg, RING_NAMES, SCENARIOS,
+    bucket_ns, Frame, LogMsg, Outcome, RunInfo, StandbyMsg, UiMsg, RING_NAMES, SCENARIOS,
 };
 
 /// Spin, then sleep: what an idle reader does.
@@ -92,7 +92,7 @@ pub fn spawn_log_writer(
                     LogMsg::Record(r) => {
                         if let Some((_, recs)) = &mut run {
                             recs.push(WireRecord::from(&r));
-                            if recs.len() % 1024 == 0 {
+                            if recs.len() % 64 == 0 {
                                 status.lock().unwrap().records = recs.len() as u64;
                             }
                         }
@@ -179,7 +179,7 @@ fn write_and_check(
 pub struct StandbyStats {
     pub run_id: u64,
     pub records: u64,
-    /// `on_message` latency over the last window (about 2 s), ns.
+    /// `on_message` latency over the run so far, ns.
     pub p50: u64,
     pub p99: u64,
     pub p999: u64,
@@ -202,7 +202,6 @@ pub fn spawn_standby(
             let mut out = Vec::with_capacity(64);
             let mut processed = 0u64;
             let mut hist = Histogram::<u64>::new_with_bounds(1, 100_000_000, 3).unwrap();
-            let mut window = Instant::now();
             let mut idle = Idle(0);
             loop {
                 let Ok(msg) = rx.pop() else {
@@ -215,13 +214,9 @@ pub fn spawn_standby(
                         engine = Engine::new();
                         hasher = FillsHasher::default();
                         processed = 0;
-                        let mut s = stats.lock().unwrap();
-                        *s = StandbyStats {
+                        hist.reset();
+                        *stats.lock().unwrap() = StandbyStats {
                             run_id,
-                            p50: s.p50,
-                            p99: s.p99,
-                            p999: s.p999,
-                            max: s.max,
                             ..Default::default()
                         };
                     }
@@ -246,14 +241,12 @@ pub fn spawn_standby(
                             s.in_sync = Some(mine.as_bytes() == fills_hash);
                             s.checked_at = records;
                         }
-                        if window.elapsed() >= Duration::from_secs(2) && !hist.is_empty() {
+                        if !hist.is_empty() {
                             s.p50 = hist.value_at_quantile(0.5);
                             s.p99 = hist.value_at_quantile(0.99);
                             s.p999 = hist.value_at_quantile(0.999);
                             s.max = hist.max();
                             s.window_msgs = hist.len();
-                            hist.reset();
-                            window = Instant::now();
                         }
                     }
                     StandbyMsg::Exit => return,
@@ -271,8 +264,18 @@ pub fn spawn_standby(
 struct Series {
     run_id: u64,
     bucket_ns: u64,
-    /// (bucket, t, true px, visible px, mid)
-    points: Vec<(u64, u64, i64, i64, Option<f64>)>,
+    /// (bucket, t, true px, visible px, mid). Path samples between frames have no book mid
+    /// (`Mid::Unknown`), so the mid line bridges them instead of breaking.
+    points: Vec<(u64, u64, i64, i64, Mid)>,
+}
+
+#[derive(Clone, Copy, PartialEq)]
+enum Mid {
+    /// One side of the book was empty.
+    None,
+    At(f64),
+    /// A path sample: the book wasn't looked at.
+    Unknown,
 }
 
 #[derive(Clone)]
@@ -316,20 +319,30 @@ pub fn spawn_ui_bridge(
                 if series.run_id != f.run_id {
                     series = Series {
                         run_id: f.run_id,
-                        bucket_ns: (f.end_ns / 2_400).max(10_000_000),
+                        bucket_ns: bucket_ns(f.end_ns),
                         points: Vec::new(),
                     };
                     races.clear();
                 }
                 let mid = match (f.n_bids, f.n_asks) {
-                    (0, _) | (_, 0) => None,
-                    _ => Some((f.bids[0].0 + f.asks[0].0) as f64 / 2.0),
+                    (0, _) | (_, 0) => Mid::None,
+                    _ => Mid::At((f.bids[0].0 + f.asks[0].0) as f64 / 2.0),
                 };
-                let b = f.clock_ns / series.bucket_ns;
-                let p = (b, f.clock_ns, f.true_px, f.visible_px, mid);
-                match series.points.last_mut() {
-                    Some(last) if last.0 == b => *last = p,
-                    _ => series.points.push(p),
+                let samples = f.samples[..f.n_samples as usize]
+                    .iter()
+                    .map(|&(t, px)| (t, px, f.visible_px, Mid::Unknown));
+                for (t, px, vis, m) in samples.chain([(f.clock_ns, f.true_px, f.visible_px, mid)]) {
+                    let b = t / series.bucket_ns;
+                    match series.points.last_mut() {
+                        // A frame point replaces a sample in its bucket, never the reverse.
+                        Some(last) if last.0 == b => {
+                            if m != Mid::Unknown || last.4 == Mid::Unknown {
+                                *last = (b, t, px, vis, m);
+                            }
+                        }
+                        Some(last) if last.0 > b => {}
+                        _ => series.points.push((b, t, px, vis, m)),
+                    }
                 }
                 for r in &f.races[..f.n_races as usize] {
                     let e = races.entry(r.order_id).or_insert(FeedRace {
@@ -398,7 +411,11 @@ fn snapshot(
         .iter()
         .enumerate()
         .filter(|(i, _)| i % stride == 0 || *i + 1 == n)
-        .map(|(_, p)| json!([s(p.1), px(p.2), px(p.3), p.4.map(|m| m / 100.0)]))
+        .map(|(_, p)| match p.4 {
+            Mid::At(m) => json!([s(p.1), px(p.2), px(p.3), m / 100.0]),
+            Mid::None => json!([s(p.1), px(p.2), px(p.3), null]),
+            Mid::Unknown => json!([s(p.1), px(p.2), px(p.3)]),
+        })
         .collect();
 
     let mut feed: Vec<&FeedRace> = races
@@ -478,7 +495,10 @@ fn snapshot(
         "price": {
             "nasdaq": px(f.true_px),
             "visible": px(f.visible_px),
-            "mid": series.points.last().and_then(|p| p.4).map(|m| m / 100.0),
+            "mid": match series.points.last().map(|p| p.4) {
+                Some(Mid::At(m)) => Some(m / 100.0),
+                _ => None,
+            },
             "view": [s(v0), s(v0 + span)],
             "series": points,
         },
