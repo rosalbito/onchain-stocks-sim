@@ -114,6 +114,8 @@ pub struct Counts {
     pub ticks: u64,
     pub news: u64,
     pub cancels: u64,
+    /// Logged live control changes (`Config` records).
+    pub configs: u64,
     pub fills: u64,
     pub volume_lots: u64,
     /// Sum of px × qty over fills, in tick·lots.
@@ -541,6 +543,7 @@ impl Sim {
             MsgKind::Tick { .. } => c.ticks += 1,
             MsgKind::New { .. } => c.news += 1,
             MsgKind::Cancel { .. } => c.cancels += 1,
+            MsgKind::Config { .. } => c.configs += 1,
         }
         for ev in &events {
             self.fills.update(ev.seq, &ev.kind);

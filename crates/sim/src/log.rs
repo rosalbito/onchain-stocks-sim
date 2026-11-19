@@ -49,6 +49,12 @@ pub enum WireKind {
     Tick {
         px_ticks: i64,
     },
+    /// A live control change. Appended last, so the encoding of every other kind (and every
+    /// log without one) is unchanged.
+    Config {
+        param: u32,
+        value: u64,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -90,6 +96,7 @@ impl From<&LogRecord> for WireRecord {
                 priority_fee,
             },
             MsgKind::Tick { px_ticks } => WireKind::Tick { px_ticks },
+            MsgKind::Config { param, value } => WireKind::Config { param, value },
         };
         WireRecord {
             seq: r.seq,
@@ -131,6 +138,7 @@ impl From<&WireRecord> for LogRecord {
                 priority_fee,
             },
             WireKind::Tick { px_ticks } => MsgKind::Tick { px_ticks },
+            WireKind::Config { param, value } => MsgKind::Config { param, value },
         };
         LogRecord {
             seq: w.seq,
@@ -162,7 +170,7 @@ pub fn sha256_hex(bytes: &[u8]) -> String {
 }
 
 /// Incremental hash of the fills, in log order: the "fills log" the golden hashes cover.
-#[derive(Default)]
+#[derive(Default, Clone)]
 pub struct FillsHasher(Sha256);
 
 impl FillsHasher {
