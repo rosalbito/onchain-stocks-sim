@@ -312,23 +312,26 @@ On-chain we need none of this. An order spends milliseconds on the network to th
 
 ## 10. Live mode as built (phase 4)
 
-**Run the demo:** `cargo run --release -p server` starts everything and opens the dashboard at http://127.0.0.1:7878/ (`--no-open` to skip the browser, `--scenario`, `--speed`, `--rule`, `--block-ms` to start elsewhere). Ctrl-C writes and checks the run's log in `out/live/`.
+**Run the demo:** `cargo run --release -p server` starts everything and opens the dashboard at http://127.0.0.1:7878/ on its setup screen (`--start` or `--stress <rate>` to skip it, `--no-open` to leave the browser alone). Ctrl-C writes and checks the run's log in `out/live/`.
 
 ```
- browser ──ws──▶ axum (tokio) ──control ring──▶ ENGINE THREAD: sim + book, the single writer
+                                    stress producer ──input ring──┐
+ browser ──ws──▶ axum (tokio) ──control ring──▶ ENGINE THREAD: the book's single writer
     ▲                                              │  one rtrb ring per reader
     │                                  ┌───────────┼───────────────┐
     │                                  ▼           ▼               ▼
     └── watch ◀── UI bridge ◀── frames  log writer  standby (replay, latency, drift check)
+                                        → disk
 ```
 
-- **Engine thread** (`crates/server/src/engine_thread.rs`): owns `sim::Live`, the simulation advanced step by step. It turns wall time × playback speed into virtual time, applies each control from the control ring at the current virtual time as a logged `Config` record (DECISIONS 60, 61), and publishes. It is paced by the virtual clock, so it sleeps 1 ms between steps instead of spinning.
-- **Log writer**: gets every record; when a run ends or stops it writes the input log (the batch format) and re-simulates it from the log alone. The dashboard shows "log replays exactly" when the bytes and the fills hash match.
-- **Standby**: a second engine fed the same records, the hot standby of section 5. It times every `on_message` (the dashboard's latency figures) and compares its fills hash with the primary's at every frame.
-- **UI bridge**: turns a fixed-size frame, about 30 a second, into the dashboard's JSON and hands it to the websocket tasks through `tokio::sync::watch`.
+- **Engine thread** (`crates/server/src/engine_thread.rs`): idle on the setup screen; in market mode it owns `sim::Live` and turns wall time × playback speed into virtual time, applying each control as a logged `Config` record (DECISIONS 60, 61); in stress mode it drains the input ring in batches, numbering, logging and matching each message (DECISION 71).
+- **Stress producer** (`stress.rs`): seeded synthetic flow at a target rate or flat out; the flow is a function of the seed and the logged rate changes, so its log can be regenerated.
+- **Log writer**: appends every record to a journal on disk as it arrives (flushed every 100 ms, synced every second) and stops a run at the size cap; after the run a check thread reads it back from disk and re-simulates (market) or replays and regenerates (stress) it (DECISION 72).
+- **Standby**: a second engine fed the same records, the hot standby of section 5. It times every `on_message` and every block, and compares its fills hash with the primary's at every frame.
+- **UI bridge**: turns a fixed-size frame, about 30 a second, into the dashboard's JSON, samples CPU, memory, disk and ring waits twice a second into one-minute histories, and hands both to the websocket tasks through `tokio::sync::watch`.
 - The log and standby rings wait when full (a record is never dropped); the UI ring drops (only the newest frame matters). Idle readers spin briefly, then sleep 50 µs.
-- The dashboard (`dashboard/`) is static HTML, CSS and canvas, embedded in the server binary with its fonts. Controls also work as `POST /api/control` with the same JSON, and `GET /api/snapshot` returns the latest snapshot.
-- The benchmark is `crates/bench` (`cargo run --release -p bench -- all --runs 3`). Its results are in DECISIONS 62 and 68.
+- The dashboard (`dashboard/`) is static HTML, CSS and canvas, embedded in the server binary with its fonts. Commands also work as `POST /api/control` with the same JSON; `GET /api/snapshot` and `/api/history` return the latest of each.
+- Measured: the pipeline holds 1M msgs/s with a p99 of 43 µs from producer to matched, and saturates at about 5.6M msgs/s on the engine thread (DECISION 74). The benchmark is `crates/bench` (`cargo run --release -p bench -- all --runs 3`); its results are in DECISIONS 62 and 68.
 
 ## Sources
 
