@@ -310,6 +310,26 @@ OCaml is a different axis. It's the language Jane Street is known for. It has a 
 
 On-chain we need none of this. An order spends milliseconds on the network to the sequencer, then waits for its block. Our engine handles a message in microseconds or less, so making it faster changes nothing about who wins. The ordering rule and the distance to the sequencer decide that. Kernel bypass and FPGAs pay off only where rivals compete at the microsecond level, as on Nasdaq. That contrast is a good slide: the latency ladder, with on-chain marked on it.
 
+## 10. Live mode as built (phase 4)
+
+**Run the demo:** `cargo run --release -p server` starts everything and opens the dashboard at http://127.0.0.1:7878/ (`--no-open` to skip the browser, `--scenario`, `--speed`, `--rule`, `--block-ms` to start elsewhere). Ctrl-C writes and checks the run's log in `out/live/`.
+
+```
+ browser ──ws──▶ axum (tokio) ──control ring──▶ ENGINE THREAD: sim + book, the single writer
+    ▲                                              │  one rtrb ring per reader
+    │                                  ┌───────────┼───────────────┐
+    │                                  ▼           ▼               ▼
+    └── watch ◀── UI bridge ◀── frames  log writer  standby (replay, latency, drift check)
+```
+
+- **Engine thread** (`crates/server/src/engine_thread.rs`): owns `sim::Live`, the simulation advanced step by step. It turns wall time × playback speed into virtual time, applies each control from the control ring at the current virtual time as a logged `Config` record (DECISIONS 60, 61), and publishes. It is paced by the virtual clock, so it sleeps 1 ms between steps instead of spinning.
+- **Log writer**: gets every record; when a run ends or stops it writes the input log (the batch format) and re-simulates it from the log alone. The dashboard shows "log replays exactly" when the bytes and the fills hash match.
+- **Standby**: a second engine fed the same records, the hot standby of section 5. It times every `on_message` (the dashboard's latency figures) and compares its fills hash with the primary's at every frame.
+- **UI bridge**: turns a fixed-size frame, about 30 a second, into the dashboard's JSON and hands it to the websocket tasks through `tokio::sync::watch`.
+- The log and standby rings wait when full (a record is never dropped); the UI ring drops (only the newest frame matters). Idle readers spin briefly, then sleep 50 µs.
+- The dashboard (`dashboard/`) is static HTML, CSS and canvas, embedded in the server binary with its fonts. Controls also work as `POST /api/control` with the same JSON, and `GET /api/snapshot` returns the latest snapshot.
+- The benchmark is `crates/bench` (`cargo run --release -p bench -- all --runs 3`). Its results are in DECISIONS 62 and 68.
+
 ## Sources
 
 - [Martin Fowler, The LMAX Architecture](https://martinfowler.com/articles/lmax.html): all business logic on a single thread, "6 million orders per second on a single thread"
