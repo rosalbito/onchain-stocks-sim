@@ -13,7 +13,7 @@
 
 use std::collections::BTreeMap;
 
-use engine::{AgentId, Engine, EventKind, LogRecord, MsgKind, Px, Qty, Side};
+use engine::{AgentId, Engine, EventKind, LogRecord, MsgKind, OrderId, Px, Qty, Side};
 
 use crate::{AccountClass, RaceStats, RaceTracker, CASH_PER_TICK_LOT};
 
@@ -165,32 +165,192 @@ pub struct Quoted {
     pub total_ns: u64,
 }
 
-/// The Monday-open take: sniper PnL in the first W after the reopen ÷ (gap × quantity resting at
-/// Friday close on the side the gap makes stale).
+/// The Monday-open take (docs/DECISIONS.md, entry 80). The *gap prize* is what the book offered
+/// snipers at the reopen: Σ staleness × lots over the LP quotes resting just before the reopen
+/// tick that the reopen price leaves stale by at least θ, each valued at the reopen price. The
+/// prize then splits by who removed each of those quotes within W: snipers (fills), the LP (its
+/// cancels), regular traders (fills), or nobody. Numerator and denominator cover the same quotes
+/// at the same price, so every share is in [0, 1] except the net one, which subtracts fees.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct MondayOpen {
     /// Reopen price − last visible price, ticks.
     pub gap_ticks: i64,
-    /// Lots resting at the close on the stale side (asks if the gap is up, bids if down).
+    /// Lots resting at the close on the stale side (asks if the gap is up, bids if down). A
+    /// diagnostic: the spec's denominator used it, but the book changes over the weekend.
     pub resting_lots: u64,
-    /// Lots resting on the stale side just before the reopen tick (a diagnostic: weekend
-    /// trading and the LP's inventory cap can change the book between close and reopen).
+    /// Lots resting on the stale side just before the reopen tick (a diagnostic).
     pub resting_lots_at_reopen: u64,
-    /// Sniper PnL (horizon [`HEADLINE_H`], net of fees) on fills in [reopen, reopen + W), cash.
+    /// The gap prize: Σ staleness × lots over the LP quotes stale by ≥ θ at the reopen,
+    /// tick·lots.
+    pub prize: i128,
+    /// Lots in those quotes.
+    pub prize_lots: u64,
+    /// Part of the prize snipers filled within W, tick·lots (valued at the reopen price).
+    pub sniper_took: i128,
+    /// Part of the prize the LP cancelled within W, tick·lots.
+    pub lp_kept: i128,
+    /// Part of the prize regular traders filled within W, tick·lots.
+    pub other_took: i128,
+    /// Taker fees snipers paid on their fills of prize quotes, cash.
+    pub sniper_taker_fees: i128,
+    /// Priority fees on each sniper's first reaction after the reopen (its first price seen
+    /// after the weekend is the reopen tick), filled or not, cash.
+    pub sniper_priority_fees: i128,
+    /// Priority fees on the LP's cancels of prize quotes, found or not, cash.
+    pub lp_priority_fees: i128,
+    /// Sniper PnL (horizon [`HEADLINE_H`], net of fees) on everything in [reopen, reopen + W),
+    /// cash: the window's sniper take, races after the reopen included.
     pub sniper_pnl: i128,
     /// LP loss to snipers (horizon [`HEADLINE_H`]) on fills in the window, tick·lots.
     pub lp_loss_to_snipers: i128,
+    /// Priority fees paid by anyone on messages processed in the window, cash.
+    pub chain_fees: i128,
     /// Σ p · q over all fills in the window, tick·lots (the window's volume).
     pub notional_tick_lots: i128,
 }
 
 impl MondayOpen {
-    /// The share of the gap as (numerator, denominator) in cash units.
+    /// The Monday-open take as a share of the gap: (sniper_took, prize), tick·lots. In [0, 1];
+    /// undefined (zero denominator) when no resting quote was stale at the reopen.
     pub fn share(&self) -> (i128, i128) {
+        (self.sniper_took, self.prize)
+    }
+
+    /// The snipers' share net of the fees they paid for the gap, cash units. At most the gross
+    /// share; negative when their priority bids exceed what they took.
+    pub fn net_share(&self) -> (i128, i128) {
         (
-            self.sniper_pnl,
-            self.gap_ticks.unsigned_abs() as i128 * self.resting_lots as i128 * CASH_PER_TICK_LOT,
+            self.sniper_took * CASH_PER_TICK_LOT
+                - self.sniper_taker_fees
+                - self.sniper_priority_fees,
+            self.prize * CASH_PER_TICK_LOT,
         )
+    }
+
+    /// The chain's share: priority fees paid in the gap race (snipers' and the LP's), cash.
+    pub fn chain_share(&self) -> (i128, i128) {
+        (
+            self.sniper_priority_fees + self.lp_priority_fees,
+            self.prize * CASH_PER_TICK_LOT,
+        )
+    }
+
+    /// The LP's share: the prize it cancelled in time, tick·lots, before its cancel fees.
+    pub fn lp_share(&self) -> (i128, i128) {
+        (self.lp_kept, self.prize)
+    }
+}
+
+/// The LP's resting GTC quotes, by id, as the replay sees them.
+#[derive(Default)]
+struct LpQuotes {
+    live: BTreeMap<OrderId, (Side, Px, Qty)>,
+}
+
+impl LpQuotes {
+    fn on_event(&mut self, ev: &EventKind, is_lp: bool) {
+        match *ev {
+            EventKind::Accepted {
+                order_id,
+                side,
+                px,
+                qty,
+                tif: engine::Tif::Gtc,
+                ..
+            } if is_lp => {
+                self.live.insert(order_id, (side, px, qty));
+            }
+            EventKind::Fill {
+                maker_order,
+                taker_order,
+                qty,
+                maker_remaining,
+                ..
+            } => {
+                if let Some(q) = self.live.get_mut(&maker_order) {
+                    q.2 = maker_remaining;
+                    if maker_remaining == 0 {
+                        self.live.remove(&maker_order);
+                    }
+                }
+                // A GTC that crossed on entry: its taker fills reduce what rests.
+                if let Some(q) = self.live.get_mut(&taker_order) {
+                    q.2 -= qty;
+                    if q.2 == 0 {
+                        self.live.remove(&taker_order);
+                    }
+                }
+            }
+            EventKind::Cancelled { order_id, .. } => {
+                self.live.remove(&order_id);
+            }
+            _ => {}
+        }
+    }
+}
+
+/// The prize quotes while the window is open: id → (staleness at the reopen, lots still resting).
+struct GapRace {
+    open: BTreeMap<OrderId, (i64, Qty)>,
+    /// Every prize quote, resolved or not, to attribute the LP's cancel fees.
+    ids: std::collections::BTreeSet<OrderId>,
+    m: MondayOpen,
+}
+
+impl GapRace {
+    /// The LP quotes the reopen price `v` leaves stale by at least θ.
+    fn at_reopen(lp: &LpQuotes, v: Px, theta: i64) -> Self {
+        let mut g = GapRace {
+            open: BTreeMap::new(),
+            ids: std::collections::BTreeSet::new(),
+            m: MondayOpen::default(),
+        };
+        for (&id, &(side, px, qty)) in &lp.live {
+            let stale = match side {
+                Side::Sell => v - px,
+                Side::Buy => px - v,
+            };
+            if stale >= theta {
+                g.open.insert(id, (stale, qty));
+                g.ids.insert(id);
+                g.m.prize += stale as i128 * qty as i128;
+                g.m.prize_lots += qty;
+            }
+        }
+        g
+    }
+
+    fn on_event(&mut self, ev: &EventKind, class: &impl Fn(AgentId) -> AccountClass, fee_bps: u64) {
+        match *ev {
+            EventKind::Fill {
+                maker_order,
+                taker_agent,
+                px,
+                qty,
+                ..
+            } => {
+                let Some((stale, left)) = self.open.get_mut(&maker_order) else {
+                    return;
+                };
+                let took = *stale as i128 * qty as i128;
+                if class(taker_agent) == AccountClass::Sniper {
+                    self.m.sniper_took += took;
+                    self.m.sniper_taker_fees += px as i128 * qty as i128 * fee_bps as i128;
+                } else {
+                    self.m.other_took += took;
+                }
+                *left -= qty;
+                if *left == 0 {
+                    self.open.remove(&maker_order);
+                }
+            }
+            EventKind::Cancelled { order_id, .. } => {
+                if let Some((stale, left)) = self.open.remove(&order_id) {
+                    self.m.lp_kept += stale as i128 * left as i128;
+                }
+            }
+            _ => {}
+        }
     }
 }
 
@@ -370,10 +530,29 @@ pub fn measure(inp: &MeasureInput) -> Metrics {
     let mut window_pnl = 0i128;
     let mut window_lp_loss = 0i128;
     let mut window_notional = 0i128;
+    let mut window_chain = 0i128;
     let in_window = |t: u64| {
         inp.weekend
             .is_some_and(|w| t >= w.reopen_ns && t < w.reopen_ns + inp.monday_window_ns)
     };
+    let class_is = |a: AgentId, c: AccountClass| inp.classes.get(&a) == Some(&c);
+    // The gap race: the LP quotes resting at the reopen, and each sniper's first decision after
+    // the reopen. A sniper acts only on prices it sees and no price is visible over the
+    // weekend, so that decision is its reaction to the reopen tick.
+    let mut lp_quotes = LpQuotes::default();
+    let mut gap: Option<GapRace> = None;
+    let mut first_reaction: BTreeMap<AgentId, u64> = BTreeMap::new();
+    if let Some(w) = inp.weekend {
+        for (r, &d) in inp.records.iter().zip(inp.decided_ns) {
+            if d >= w.reopen_ns
+                && matches!(r.kind, MsgKind::New { .. })
+                && class_is(r.agent, AccountClass::Sniper)
+            {
+                let e = first_reaction.entry(r.agent).or_insert(d);
+                *e = (*e).min(d);
+            }
+        }
+    }
 
     for (i, rec) in inp.records.iter().enumerate() {
         let t = processed_ns(rec, inp.block_ns);
@@ -390,6 +569,7 @@ pub fn measure(inp: &MeasureInput) -> Metrics {
                     reopen_px = Some(px_ticks);
                     let lots = |m: &BTreeMap<Px, Qty>| m.values().sum::<u64>();
                     at_reopen = Some((lots(&book.bids), lots(&book.asks)));
+                    gap = Some(GapRace::at_reopen(&lp_quotes, px_ticks, inp.theta_ticks));
                 }
             }
         }
@@ -404,8 +584,27 @@ pub fn measure(inp: &MeasureInput) -> Metrics {
                 m.class_pnl[h][ci(c)] -= fee;
                 m.class_pnl[h][ci(AccountClass::Chain)] += fee;
             }
-            if c == AccountClass::Sniper && in_window(t) {
-                window_pnl -= fee;
+            if in_window(t) {
+                window_chain += fee;
+                if c == AccountClass::Sniper {
+                    window_pnl -= fee;
+                }
+                if let Some(g) = gap.as_mut() {
+                    match rec.kind {
+                        MsgKind::New { .. }
+                            if c == AccountClass::Sniper
+                                && first_reaction.get(&rec.agent) == Some(&inp.decided_ns[i]) =>
+                        {
+                            g.m.sniper_priority_fees += fee;
+                        }
+                        MsgKind::Cancel { order_id, .. }
+                            if c == AccountClass::Lp && g.ids.contains(&order_id) =>
+                        {
+                            g.m.lp_priority_fees += fee;
+                        }
+                        _ => {}
+                    }
+                }
             }
         }
 
@@ -413,6 +612,12 @@ pub fn measure(inp: &MeasureInput) -> Metrics {
         races.on_record(rec, &events);
         let mut taker_filled = false;
         for ev in &events {
+            let is_lp = matches!(ev.kind, EventKind::Accepted { agent, .. }
+                if class_is(agent, AccountClass::Lp));
+            lp_quotes.on_event(&ev.kind, is_lp);
+            if let (Some(g), true) = (gap.as_mut(), in_window(t)) {
+                g.on_event(&ev.kind, &class, inp.taker_fee_bps);
+            }
             match ev.kind {
                 EventKind::BookChange { side, px, qty } => book.apply(side, px, qty),
                 EventKind::Fill {
@@ -502,15 +707,17 @@ pub fn measure(inp: &MeasureInput) -> Metrics {
     if let (Some(_), Some((bids, asks)), Some(before), Some(after)) =
         (inp.weekend, at_close, last_visible, reopen_px)
     {
-        let gap = after - before;
+        let gap_ticks = after - before;
         let (rb, ra) = at_reopen.unwrap_or_default();
         m.monday = Some(MondayOpen {
-            gap_ticks: gap,
-            resting_lots: if gap >= 0 { asks } else { bids },
-            resting_lots_at_reopen: if gap >= 0 { ra } else { rb },
+            gap_ticks,
+            resting_lots: if gap_ticks >= 0 { asks } else { bids },
+            resting_lots_at_reopen: if gap_ticks >= 0 { ra } else { rb },
             sniper_pnl: window_pnl,
             lp_loss_to_snipers: window_lp_loss,
+            chain_fees: window_chain,
             notional_tick_lots: window_notional,
+            ..gap.map(|g| g.m).unwrap_or_default()
         });
     }
     m
@@ -791,9 +998,149 @@ mod tests {
         assert_eq!(mo.lp_loss_to_snipers, 490);
         assert_eq!(mo.notional_tick_lots, 100_010);
         assert_eq!(mo.sniper_pnl, 4_900_000 - 100_010);
-        assert_eq!(mo.share(), (4_799_990, 50 * 15 * CASH_PER_TICK_LOT));
+        // Gap prize: 49 × 10 + 48 × 5 = 730 tick·lots. The sniper took the 490; the 100.02 ask
+        // is still resting when the window ends (the 80 s snipe is outside it).
+        assert_eq!((mo.prize, mo.prize_lots), (730, 15));
+        assert_eq!(mo.share(), (490, 730));
+        assert_eq!((mo.lp_kept, mo.other_took), (0, 0));
+        assert_eq!(mo.sniper_taker_fees, 100_010);
+        assert_eq!(mo.net_share(), (4_900_000 - 100_010, 7_300_000));
         // Over the whole run the second snipe counts too.
         assert_eq!(m.lp_loss_to_snipers(1), 490 + 5 * 48);
+    }
+
+    /// The case the spec's ratio got wrong. Between the close and the reopen a regular trader
+    /// lifts one LP ask, so the book that faces the gap is not the book at the close; the LP's
+    /// quotes sit 3 and 6 ticks out, so a 5-tick gap leaves one of them stale by 2 ticks, not 5;
+    /// a race after the reopen pays the snipers too; and under PGA the losing sniper pays for
+    /// nothing. The share counts only the quotes that faced the gap, valued at the reopen price.
+    #[test]
+    fn monday_share_counts_only_the_quotes_that_faced_the_gap() {
+        const SNIPER2: AgentId = 4;
+        let cancel = |order_id, priority_fee| MsgKind::Cancel {
+            order_id,
+            priority_fee,
+        };
+        let l = log(&[
+            (0, 0, 0, 0, tick(10_000)),
+            (0, 0, 1, LP, new(Side::Sell, 10_003, 10, Tif::Gtc, 0)), // id 2
+            (0, 0, 2, LP, new(Side::Sell, 10_006, 5, Tif::Gtc, 0)),  // id 3
+            (0, 0, 3, LP, new(Side::Buy, 9_997, 10, Tif::Gtc, 0)),   // id 4
+            (500, 500, 4, LP, new(Side::Sell, 10_001, 10, Tif::Gtc, 0)), // id 5
+            // Weekend (close at 1 s): a regular trader takes the 100.01 ask.
+            (
+                5_000,
+                5_000,
+                5,
+                TRADER,
+                new(Side::Buy, 10_006, 10, Tif::Ioc, 0),
+            ),
+            // Reopen at 10 s: +5 ticks. Only the 100.03 ask is stale (by 2): prize 20.
+            (10_000, 10_000, 6, 0, tick(10_005)),
+            // Sniper 1 (its view of the book is old) takes 6 of the 10 lots, bidding 3 cents.
+            (
+                10_008,
+                10_005,
+                7,
+                SNIPER,
+                new(Side::Buy, 10_004, 6, Tif::Ioc, 30_000),
+            ),
+            // The LP cancels the other 4 (bidding 0.5 cents) and the fresh 100.06 ask (0.1
+            // cent, not a prize quote), and requotes.
+            (10_023, 10_020, 8, LP, cancel(2, 5_000)),
+            (10_023, 10_020, 9, LP, cancel(3, 1_000)),
+            (
+                10_024,
+                10_020,
+                10,
+                LP,
+                new(Side::Sell, 10_006, 10, Tif::Gtc, 0),
+            ), // id 11
+            // Sniper 2 reacts to the reopen too, late: it finds nothing but pays its 2 cents.
+            (
+                10_030,
+                10_006,
+                11,
+                SNIPER2,
+                new(Side::Buy, 10_004, 10, Tif::Ioc, 20_000),
+            ),
+            // A race after the reopen, inside the window: not part of the gap.
+            (12_000, 12_000, 12, 0, tick(10_010)),
+            (
+                12_008,
+                12_005,
+                13,
+                SNIPER,
+                new(Side::Buy, 10_009, 10, Tif::Ioc, 1_000),
+            ),
+        ]);
+        let path = [
+            (0, 10_000),
+            (3_000, 10_002),
+            (9_000, 10_005),
+            (12_000, 10_010),
+        ];
+        let w = Weekend {
+            close_ns: S,
+            reopen_ns: 10 * S,
+        };
+        let mut classes = classes();
+        classes.insert(SNIPER2, AccountClass::Sniper);
+        let path = PricePath::new(path.iter().map(|&(t, p)| (t * MS, p)).collect());
+        let m = measure(&MeasureInput {
+            records: &l.recs,
+            decided_ns: &l.decided,
+            classes: &classes,
+            path: &path,
+            block_ns: 0,
+            end_ns: 100 * S,
+            theta_ticks: 1,
+            taker_fee_bps: 1,
+            weekend: Some(w),
+            monday_window_ns: 60 * S,
+        });
+        let mo = m.monday.unwrap();
+        assert_eq!(mo.gap_ticks, 5);
+        // 25 ask lots at the close, 15 at the reopen. The spec's denominator would have been
+        // 5 × 25 = 125 tick·lots for a prize of 20.
+        assert_eq!((mo.resting_lots, mo.resting_lots_at_reopen), (25, 15));
+        assert_eq!((mo.prize, mo.prize_lots), (20, 10));
+        // Snipers took 6 lots × 2 ticks, the LP kept 4 × 2: the shares add up to 1.
+        assert_eq!(mo.share(), (12, 20));
+        assert_eq!(mo.lp_share(), (8, 20));
+        assert_eq!(mo.other_took, 0);
+        // Fees for the gap: both snipers' first reactions (3 + 2 cents) and the LP's cancel of
+        // the prize quote (0.5 cent); not the 0.1-cent cancel or the later race's bid.
+        assert_eq!(mo.sniper_taker_fees, 10_003 * 6);
+        assert_eq!(mo.sniper_priority_fees, 50_000);
+        assert_eq!(mo.lp_priority_fees, 5_000);
+        assert_eq!(mo.net_share(), (120_000 - 60_018 - 50_000, 200_000));
+        assert_eq!(mo.chain_share(), (55_000, 200_000));
+        // The window's sniper take still holds everything: the gap fill (6 × 2 at h = 1 s) and
+        // the later race (10 × (100.10 − 100.06)), net of every sniper fee in the window.
+        assert_eq!(
+            mo.sniper_pnl,
+            (12 + 40) * CASH_PER_TICK_LOT - 60_018 - 100_060 - 51_000
+        );
+        assert_eq!(mo.chain_fees, 57_000);
+    }
+
+    #[test]
+    fn monday_share_is_undefined_when_no_quote_faces_the_gap() {
+        // A 2-tick gap against asks 3 ticks out: nothing is stale, so there is no prize.
+        let l = log(&[
+            (0, 0, 0, 0, tick(10_000)),
+            (0, 0, 1, LP, new(Side::Sell, 10_003, 10, Tif::Gtc, 0)),
+            (10_000, 10_000, 2, 0, tick(10_002)),
+        ]);
+        let w = Weekend {
+            close_ns: S,
+            reopen_ns: 10 * S,
+        };
+        let m = run_with(&l, &[(0, 10_000), (9_000, 10_002)], 0, 20_000, Some(w));
+        let mo = m.monday.unwrap();
+        assert_eq!((mo.gap_ticks, mo.resting_lots), (2, 10));
+        assert_eq!(mo.share(), (0, 0));
     }
 
     #[test]
