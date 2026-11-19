@@ -44,6 +44,7 @@ fn block() -> Vec<Pending> {
         .map(|(i, &(ms, agent, kind))| Pending {
             t_ns: ms * MS,
             tiebreak: i as u64,
+            decided_ns: 0,
             agent,
             kind,
         })
@@ -165,20 +166,20 @@ fn sequencer_forms_blocks_by_arrival_time() {
         priority_fee: 0,
     };
     assert_eq!(
-        s.accept(8 * MS, S1, kind),
+        s.accept(8 * MS, 0, S1, kind),
         Accepted::Buffered {
             schedule_close: Some((0, 100 * MS))
         }
     );
     assert_eq!(
-        s.accept(99 * MS, S1, kind),
+        s.accept(99 * MS, 0, S1, kind),
         Accepted::Buffered {
             schedule_close: None
         }
     );
     // Arriving exactly at the close belongs to the next block.
     assert_eq!(
-        s.accept(100 * MS, S1, kind),
+        s.accept(100 * MS, 0, S1, kind),
         Accepted::Buffered {
             schedule_close: Some((1, 200 * MS))
         }
@@ -188,8 +189,8 @@ fn sequencer_forms_blocks_by_arrival_time() {
 
     // B = 0: every message is its own block, sequenced at once.
     let mut s = Sequencer::new(OrderingRule::Fcfs, 0);
-    assert_eq!(s.accept(5, S1, kind), Accepted::Now { block: 0 });
-    assert_eq!(s.accept(5, S2, kind), Accepted::Now { block: 1 });
+    assert_eq!(s.accept(5, 0, S1, kind), Accepted::Now { block: 0 });
+    assert_eq!(s.accept(5, 0, S2, kind), Accepted::Now { block: 1 });
 }
 
 /// Spec section 4 (rev 36): a cancel carries a priority fee, and PGA sorts it like any other

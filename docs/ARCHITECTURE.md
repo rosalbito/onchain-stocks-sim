@@ -310,6 +310,29 @@ OCaml is a different axis. It's the language Jane Street is known for. It has a 
 
 On-chain we need none of this. An order spends milliseconds on the network to the sequencer, then waits for its block. Our engine handles a message in microseconds or less, so making it faster changes nothing about who wins. The ordering rule and the distance to the sequencer decide that. Kernel bypass and FPGAs pay off only where rivals compete at the microsecond level, as on Nasdaq. That contrast is a good slide: the latency ladder, with on-chain marked on it.
 
+## 10. Live mode as built (phase 4)
+
+**Run the demo:** `cargo run --release -p server` starts everything and opens the dashboard at http://127.0.0.1:7878/ on its setup screen (`--start` or `--stress <rate>` to skip it, `--no-open` to leave the browser alone). Ctrl-C writes and checks the run's log in `out/live/`.
+
+```
+                                    stress producer ──input ring──┐
+ browser ──ws──▶ axum (tokio) ──control ring──▶ ENGINE THREAD: the book's single writer
+    ▲                                              │  one rtrb ring per reader
+    │                                  ┌───────────┼───────────────┐
+    │                                  ▼           ▼               ▼
+    └── watch ◀── UI bridge ◀── frames  log writer  standby (replay, latency, drift check)
+                                        → disk
+```
+
+- **Engine thread** (`crates/server/src/engine_thread.rs`): idle on the setup screen; in market mode it owns `sim::Live` and turns wall time × playback speed into virtual time, applying each control as a logged `Config` record (DECISIONS 60, 61); in stress mode it drains the input ring in batches, numbering, logging and matching each message (DECISION 71).
+- **Stress producer** (`stress.rs`): seeded synthetic flow at a target rate or flat out; the flow is a function of the seed and the logged rate changes, so its log can be regenerated.
+- **Log writer**: appends every record to a journal on disk as it arrives (flushed every 100 ms, synced every second) and stops a run at the size cap; after the run a check thread reads it back from disk and re-simulates (market) or replays and regenerates (stress) it (DECISION 72).
+- **Standby**: a second engine fed the same records, the hot standby of section 5. It times every `on_message` and every block, and compares its fills hash with the primary's at every frame.
+- **UI bridge**: turns a fixed-size frame, about 30 a second, into the dashboard's JSON, samples CPU, memory, disk and ring waits twice a second into one-minute histories, and hands both to the websocket tasks through `tokio::sync::watch`.
+- The log and standby rings wait when full (a record is never dropped); the UI ring drops (only the newest frame matters). Idle readers spin briefly, then sleep 50 µs.
+- The dashboard (`dashboard/`) is static HTML, CSS and canvas, embedded in the server binary with its fonts. Commands also work as `POST /api/control` with the same JSON; `GET /api/snapshot` and `/api/history` return the latest of each.
+- Measured: the pipeline holds 1M msgs/s with a p99 of 43 µs from producer to matched, and saturates at about 5.6M msgs/s on the engine thread (DECISION 74). The benchmark is `crates/bench` (`cargo run --release -p bench -- all --runs 3`); its results are in DECISIONS 62 and 68.
+
 ## Sources
 
 - [Martin Fowler, The LMAX Architecture](https://martinfowler.com/articles/lmax.html): all business logic on a single thread, "6 million orders per second on a single thread"
