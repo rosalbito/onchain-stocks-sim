@@ -197,6 +197,7 @@ pub fn spawn_standby(
     thread::Builder::new()
         .name("standby".into())
         .spawn(move || {
+            crate::qos::prefer_performance_cores();
             let mut engine = Engine::new();
             let mut hasher = FillsHasher::default();
             let mut out = Vec::with_capacity(64);

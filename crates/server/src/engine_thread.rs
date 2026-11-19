@@ -275,6 +275,7 @@ pub fn spawn(rings: Rings, start: Start) -> thread::JoinHandle<()> {
     thread::Builder::new()
         .name("engine".into())
         .spawn(move || {
+            crate::qos::prefer_performance_cores();
             let base = Scenario::from_toml(SCENARIOS[start.scenario as usize].1).unwrap();
             let rule = start.rule.unwrap_or(base.sequencer.rule);
             let block_ms = start.block_ms.unwrap_or(base.sequencer.block_ms);

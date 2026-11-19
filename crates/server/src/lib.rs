@@ -13,6 +13,7 @@
 //! changes replays exactly from its log; the log writer checks that after every run.
 
 mod engine_thread;
+mod qos;
 mod readers;
 mod web;
 
