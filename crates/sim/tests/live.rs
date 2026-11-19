@@ -175,3 +175,28 @@ fn control_codes_round_trip() {
     assert_eq!(Control::decode(1, 9), None);
     assert_eq!(Control::decode(99, 0), None);
 }
+
+#[test]
+fn transfers_and_fees_by_class_add_up() {
+    let mut cfg = load("calm_weekday");
+    cfg.duration_s = 900;
+    cfg.sequencer.rule = OrderingRule::Pga;
+    cfg.sequencer.block_ms = 250;
+    let batch = sim::run(&cfg, 4).unwrap();
+    let mut live = Live::new(&cfg, 4).unwrap();
+    live.advance_to(live.end_ns());
+    // Pairwise transfers sum to each class's fill-time take.
+    for c in AccountClass::ALL {
+        let take: i128 = AccountClass::ALL.iter().map(|&o| live.transfer(o, c)).sum();
+        assert_eq!(take, batch.take_at_fill[&c], "{c:?}");
+    }
+    assert!(live.transfer(AccountClass::Lp, AccountClass::Sniper) > 0);
+    // Fees by class sum to the ledger's totals.
+    let (taker, prio): (i128, i128) = AccountClass::ALL
+        .iter()
+        .map(|&c| live.fees_paid(c))
+        .fold((0, 0), |a, f| (a.0 + f.0, a.1 + f.1));
+    assert_eq!(taker, batch.taker_fees);
+    assert_eq!(prio, batch.priority_fees);
+    assert!(prio > 0);
+}

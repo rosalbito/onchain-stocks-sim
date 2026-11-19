@@ -201,6 +201,10 @@ struct Sim {
     market_batch: Vec<Event>,
     classes: BTreeMap<AgentId, AccountClass>,
     take_at_fill: BTreeMap<AccountClass, i128>,
+    /// For the live dashboard: the fill-time gain of each (buyer class, seller class) pair, in
+    /// tick·lots, and the fees each class paid (taker, priority), in cash units.
+    pair_take: BTreeMap<(AccountClass, AccountClass), i128>,
+    fees_paid: BTreeMap<AccountClass, (i128, i128)>,
     path: Vec<(u64, i64)>,
     decided: Vec<u64>,
     /// Live load multiplier on the regular traders' arrival rate (1 unless changed live).
@@ -284,6 +288,8 @@ impl Sim {
             races: RaceTracker::new(cfg.sniper.theta_ticks, classes.clone()),
             classes,
             take_at_fill: AccountClass::ALL.iter().map(|&c| (c, 0)).collect(),
+            pair_take: BTreeMap::new(),
+            fees_paid: BTreeMap::new(),
             agents,
             window: feed.window(),
             last_visible_px: cfg.price.start_px_ticks,
@@ -623,6 +629,13 @@ impl Sim {
         self.records.push(rec);
         self.decided.push(decided);
         self.ledger.on_included(&rec);
+        let fee = rec.kind.priority_fee() as i128;
+        if fee > 0 {
+            self.fees_paid
+                .entry(self.classes[&rec.agent])
+                .or_default()
+                .1 += fee;
+        }
         // One reused event buffer: the engine allocates nothing per message for its output.
         let mut events = std::mem::take(&mut self.events);
         self.engine.on_message_into(&rec, &mut events);
@@ -658,6 +671,13 @@ impl Sim {
                     let gain = (self.feed.px() - px) as i128 * qty as i128;
                     *self.take_at_fill.get_mut(&self.classes[&buyer]).unwrap() += gain;
                     *self.take_at_fill.get_mut(&self.classes[&seller]).unwrap() -= gain;
+                    let pair = (self.classes[&buyer], self.classes[&seller]);
+                    *self.pair_take.entry(pair).or_default() += gain;
+                    let taker_fee = px as i128 * qty as i128 * self.cfg.fees.taker_fee_bps as i128;
+                    self.fees_paid
+                        .entry(self.classes[&taker_agent])
+                        .or_default()
+                        .0 += taker_fee;
                 }
                 EventKind::CancelMissed { .. } => c.cancel_missed += 1,
                 _ => {}

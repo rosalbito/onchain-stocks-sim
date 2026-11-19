@@ -8,7 +8,7 @@
 //! speed); that choice is then an input, written down like any other.
 
 use engine::{LogRecord, MsgKind, Px, Qty, Side};
-use metrics::{class_pnl, ClassPnl, Race, RaceStats};
+use metrics::{class_pnl, AccountClass, ClassPnl, Race, RaceStats};
 
 use super::{Counts, Sim};
 use crate::config::{OrderingRule, Scenario};
@@ -217,6 +217,19 @@ impl Live {
 
     pub fn taker_fees(&self) -> i128 {
         self.sim.ledger.taker_fees
+    }
+
+    /// What `from` lost to `to` on their fills against each other, valued at the true price at
+    /// the moment of each fill (before fees), in tick·lots. Negative if `from` gained.
+    pub fn transfer(&self, from: AccountClass, to: AccountClass) -> i128 {
+        let get = |k| self.sim.pair_take.get(&k).copied().unwrap_or(0);
+        // A buyer gains (v - p)·q from the seller, so `to` gains what it took as either side.
+        get((to, from)) - get((from, to))
+    }
+
+    /// Fees a class paid so far: (taker fees, priority fees), in cash units.
+    pub fn fees_paid(&self, class: AccountClass) -> (i128, i128) {
+        self.sim.fees_paid.get(&class).copied().unwrap_or((0, 0))
     }
 
     /// Every race so far, in start order (open races have no end yet).
