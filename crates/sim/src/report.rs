@@ -191,13 +191,25 @@ fn metrics_section(o: &mut String, r: &RunResult) {
     );
     if let Some(mo) = m.monday {
         let (n, d) = mo.share();
+        let (nn, nd) = mo.net_share();
+        let (cn, cd) = mo.chain_share();
+        let (ln, ld) = mo.lp_share();
         let _ = writeln!(
             o,
-            "  Monday-open take   {:>8.3} of the gap ({:+} ticks × {} lots resting at the close; {} at the reopen)",
+            "  Monday-open take   {:>8.3} of the gap prize ({} tick·lots on {} stale lots; gap {:+} ticks, {} lots on that side at the close, {} at the reopen)",
             ratio(n, d),
+            mo.prize,
+            mo.prize_lots,
             mo.gap_ticks,
             mo.resting_lots,
             mo.resting_lots_at_reopen
+        );
+        let _ = writeln!(
+            o,
+            "                     net of sniper fees {:.3}, chain {:.3}, LP cancelled {:.3}",
+            ratio(nn, nd),
+            ratio(cn, cd),
+            ratio(ln, ld)
         );
     }
 }
