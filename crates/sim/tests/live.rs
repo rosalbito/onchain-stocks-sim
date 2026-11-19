@@ -40,8 +40,16 @@ fn live_without_controls_is_the_batch_run() {
                 step = step % 50_000 + 1_237;
                 live.advance_to(t);
             }
-            assert_eq!(live.log_bytes(), batch.log_bytes, "{name} {rule:?} B={block_ms}");
-            assert_eq!(live.fills_hash(), batch.fills_hash, "{name} {rule:?} B={block_ms}");
+            assert_eq!(
+                live.log_bytes(),
+                batch.log_bytes,
+                "{name} {rule:?} B={block_ms}"
+            );
+            assert_eq!(
+                live.fills_hash(),
+                batch.fills_hash,
+                "{name} {rule:?} B={block_ms}"
+            );
             let total: i128 = AccountClass::ALL.iter().map(|&c| live.pnl().get(c)).sum();
             assert_eq!(total, 0);
         }
