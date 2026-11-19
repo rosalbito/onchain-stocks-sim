@@ -88,7 +88,10 @@ async fn market_run_streams_takes_live_changes_and_its_log_replays() {
     })
     .await;
     assert_eq!(first["spec"]["rule"], "fcfs");
-    assert!(first["market"]["chart"]["points"].as_array().unwrap().len() > 0);
+    assert!(!first["market"]["chart"]["points"]
+        .as_array()
+        .unwrap()
+        .is_empty());
 
     // Snapshots at about 30 Hz, the clock moving forward; history twice a second.
     let t0 = Instant::now();
@@ -104,7 +107,7 @@ async fn market_run_streams_takes_live_changes_and_its_log_replays() {
                 snaps += 1;
             }
             Some("history") => {
-                assert!(v["s"]["msgs"].as_array().unwrap().len() > 0);
+                assert!(!v["s"]["msgs"].as_array().unwrap().is_empty());
                 hists += 1;
             }
             _ => {}
