@@ -227,7 +227,7 @@ function renderRaces(s) {
   $("r-lp").textContent = r.lp;
   $("r-rate").textContent = r.lp_win_rate == null ? "–" : `${(r.lp_win_rate * 100).toFixed(0)}%`;
   $("race-open").textContent = r.open ? `${r.open} open` : "";
-  const rows = r.feed.map((x) => {
+  const rows = r.feed.slice(0, 4).map((x) => {
     const key = `${x.id}`;
     const flash = x.winner === "sniper" && !seenSniperWins.has(key);
     if (x.winner === "sniper") seenSniperWins.add(key);
@@ -262,7 +262,7 @@ function renderEngine(s) {
   $("e-p50").textContent = ns(e.latency_ns.p50);
   $("e-p99").textContent = ns(e.latency_ns.p99);
   $("e-p999").textContent = ns(e.latency_ns.p999);
-  $("e-lat-n").textContent = e.latency_ns.window ? `n = ${e.latency_ns.window.toLocaleString("en-US")}` : "";
+  $("e-lat-n").textContent = e.latency_ns.window ? `standby · n ${e.latency_ns.window.toLocaleString("en-US")}` : "";
   $("rings").innerHTML = e.rings.map((r) => {
     const used = (100 * r.used) / r.cap, peak = (100 * r.peak) / r.cap;
     return `<li><span class="label">${r.name} <b>${r.peak}</b></span>` +
