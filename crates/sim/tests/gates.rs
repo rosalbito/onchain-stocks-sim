@@ -342,6 +342,12 @@ fn metrics_agree_with_the_simulation() {
                 }
                 assert_eq!(m.quoted.total_ns, s.duration_s * 1_000_000_000, "{ctx}");
                 assert_eq!(m.monday.is_some(), name == "monday_open", "{ctx}");
+                if let Some(mo) = m.monday {
+                    // The gap prize splits into disjoint parts: the share is in [0, 1].
+                    let parts = [mo.sniper_took, mo.lp_kept, mo.other_took];
+                    assert!(parts.iter().all(|&x| x >= 0), "{ctx} {mo:?}");
+                    assert!(parts.iter().sum::<i128>() <= mo.prize, "{ctx} {mo:?}");
+                }
             }
         }
     }
