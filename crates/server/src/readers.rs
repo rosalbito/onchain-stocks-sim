@@ -410,7 +410,8 @@ fn snapshot(
     let points: Vec<Value> = pts
         .iter()
         .enumerate()
-        .filter(|(i, _)| i % stride == 0 || *i + 1 == n)
+        // Thin out only path samples: frame points carry the book mid (one per bucket at most).
+        .filter(|(i, p)| i % stride == 0 || *i + 1 == n || p.4 != Mid::Unknown)
         .map(|(_, p)| match p.4 {
             Mid::At(m) => json!([s(p.1), px(p.2), px(p.3), m / 100.0]),
             Mid::None => json!([s(p.1), px(p.2), px(p.3), null]),
