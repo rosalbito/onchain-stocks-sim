@@ -117,6 +117,7 @@ fn run(layer: Layer, records: &[LogRecord], paced: bool) -> (Duration, Histogram
         Layer::Rtrb => {
             let (mut tx, mut rx) = rtrb::RingBuffer::<Msg>::new(CAP);
             let consumer = thread::spawn(move || {
+                crate::qos::prefer_performance_cores();
                 let mut sink = Sink::new(paced);
                 let mut got = 0;
                 while got < n {
@@ -145,6 +146,7 @@ fn run(layer: Layer, records: &[LogRecord], paced: bool) -> (Duration, Histogram
         Layer::Crossbeam => {
             let (tx, rx) = crossbeam_channel::bounded::<Msg>(CAP);
             let consumer = thread::spawn(move || {
+                crate::qos::prefer_performance_cores();
                 let mut sink = Sink::new(paced);
                 for _ in 0..n {
                     sink.take(rx.recv().unwrap());
@@ -156,6 +158,7 @@ fn run(layer: Layer, records: &[LogRecord], paced: bool) -> (Duration, Histogram
         }
         Layer::Tokio => {
             let rt = tokio::runtime::Builder::new_multi_thread()
+                .on_thread_start(crate::qos::prefer_performance_cores)
                 .worker_threads(2)
                 .build()
                 .unwrap();
@@ -173,6 +176,7 @@ fn run(layer: Layer, records: &[LogRecord], paced: bool) -> (Duration, Histogram
         Layer::StdMpsc => {
             let (tx, rx) = std::sync::mpsc::sync_channel::<Msg>(CAP);
             let consumer = thread::spawn(move || {
+                crate::qos::prefer_performance_cores();
                 let mut sink = Sink::new(paced);
                 for _ in 0..n {
                     sink.take(rx.recv().unwrap());
@@ -186,6 +190,7 @@ fn run(layer: Layer, records: &[LogRecord], paced: bool) -> (Duration, Histogram
             let q = Arc::new(Mutex::new(VecDeque::<Msg>::with_capacity(CAP)));
             let qc = q.clone();
             let consumer = thread::spawn(move || {
+                crate::qos::prefer_performance_cores();
                 let mut sink = Sink::new(paced);
                 let mut got = 0;
                 while got < n {

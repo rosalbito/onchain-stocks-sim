@@ -13,6 +13,7 @@ mod alloc;
 mod channels;
 mod engine_cost;
 mod profiles;
+mod qos;
 
 use std::time::Duration;
 
@@ -58,6 +59,7 @@ fn machine() -> String {
 
 fn main() {
     let args = Args::parse();
+    qos::prefer_performance_cores();
     if cfg!(debug_assertions) {
         eprintln!("warning: debug build; run with --release for real numbers");
     }
