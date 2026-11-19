@@ -1,6 +1,10 @@
 """The talk's main chart: LP loss to snipers (bps of volume) by ordering rule across block
 length B, for the weekday hour and the Monday open, with 95% bootstrap intervals.
 
+The unit is bps of the volume traded over the same span, not dollars. The two can rank FCFS and
+PGA differently on the Monday open (docs/DECISIONS.md, entries 59 and 82); summary.py and
+analysis/out/headline_b250.csv give both side by side.
+
 Reads analysis/data/grid_summary.parquet (written by `cargo run --release -p grid`).
 Writes analysis/out/main_chart.png and .svg.
 
@@ -63,6 +67,10 @@ def main() -> None:
     if s.is_empty():
         raise SystemExit("no rows for that speed gap and sniper count")
     seeds = int(s["n"].min())
+    bid = s.filter(pl.col("rule") == "pga").select(["alpha_bps", "beta_bps"]).unique()
+    if bid.height != 1:
+        raise SystemExit("expected one PGA bidding setting in the grid summary")
+    alpha, beta = (x / 1e4 for x in bid.row(0))
     blocks = sorted(s["block_ms"].unique().to_list())
     xs = list(range(len(blocks)))
 
@@ -80,7 +88,7 @@ def main() -> None:
         }
     )
     fig, axes = plt.subplots(1, 2, figsize=(12, 5.6), facecolor=BG)
-    fig.subplots_adjust(left=0.07, right=0.84, top=0.76, bottom=0.14, wspace=0.42)
+    fig.subplots_adjust(left=0.07, right=0.84, top=0.72, bottom=0.14, wspace=0.42)
 
     for ax, (regime, title, unit) in zip(axes, PANELS):
         ax.set_facecolor(BG)
@@ -113,13 +121,16 @@ def main() -> None:
         ax.text(0, 1.03, unit.upper(), transform=ax.transAxes, fontsize=8, color=INK_MUTED,
                 family="monospace")
 
-    fig.text(0.07, 0.945, "LP losses to snipers, by sequencer ordering rule", fontsize=17,
+    fig.text(0.07, 0.955, "LP losses to snipers, by sequencer ordering rule", fontsize=17,
              color=INK, fontweight="light")
     fig.text(
-        0.07, 0.885,
+        0.07, 0.865,
         f"Mean over {seeds} seeds per point, bands are 95% bootstrap intervals. {args.snipers} "
         f"snipers, sniper latency {args.gap:g}× the LP's. At B = 0 the three rules order "
-        "identically.",
+        "identically.\n"
+        f"Unit: bps of the span's volume, not dollars (dollars are in headline_b250.csv). "
+        f"Under PGA each sniper bids {alpha:g}× the prize it sees"
+        + (f", the LP {beta:g}× its exposure." if beta else "; the LP does not bid."),
         fontsize=9.5, color=INK_MUTED,
     )
     args.out.mkdir(parents=True, exist_ok=True)
