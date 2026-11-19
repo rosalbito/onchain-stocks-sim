@@ -27,7 +27,15 @@ fn main() {
     base.sniper.alpha_bps = alpha;
     println!(
         "{:>5} {:>8} {:>8} {:>9} {:>9} {:>9} {:>12} {:>12} {:>11}",
-        "rule", "IOCs", "lots", "gain 1", "gain 2-3", "gain 4+", "cancel same", "born stale", "gain $"
+        "rule",
+        "IOCs",
+        "lots",
+        "gain 1",
+        "gain 2-3",
+        "gain 4+",
+        "cancel same",
+        "born stale",
+        "gain $"
     );
     for rule in [OrderingRule::Fcfs, OrderingRule::Pga] {
         let mut s = base.clone();
