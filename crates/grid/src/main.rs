@@ -46,6 +46,32 @@ struct Args {
     /// Bootstrap resamples per interval.
     #[arg(long, default_value_t = 2_000)]
     resamples: usize,
+    /// PGA sniper bid levels α, in bps of the expected prize (5000 = 0.5). Each level is a
+    /// separate PGA arm; the other rules never bid and run once.
+    #[arg(long, value_delimiter = ',', default_value = "5000")]
+    alpha_bps: Vec<u64>,
+    /// PGA LP cancel bid levels β, in bps of exposure (10000 = 1.0), crossed with every α.
+    #[arg(long, value_delimiter = ',', default_value = "0")]
+    beta_bps: Vec<u64>,
+    /// Read each α level as the snipers' combined bid: each of N snipers bids α / N (integer
+    /// bps), so the bids scale down with the number of competitors.
+    #[arg(long)]
+    alpha_split: bool,
+    /// Only these regimes (weekday, monday_open). Default: both.
+    #[arg(long, value_delimiter = ',')]
+    regimes: Vec<String>,
+    /// Only these ordering rules (fcfs, pga, cancel_priority). Default: all three.
+    #[arg(long, value_delimiter = ',')]
+    rules: Vec<String>,
+    /// Only these block lengths, ms. Default: the grid's four.
+    #[arg(long, value_delimiter = ',')]
+    blocks_ms: Vec<u64>,
+    /// Only these speed gaps (0.1, 0.5, 1). Default: the grid's three.
+    #[arg(long, value_delimiter = ',')]
+    gaps: Vec<f64>,
+    /// Only these sniper counts. Default: the grid's three.
+    #[arg(long, value_delimiter = ',')]
+    snipers: Vec<u32>,
 }
 
 const BLOCKS_MS: [u64; 4] = [0, 50, 250, 1_000];
@@ -68,6 +94,27 @@ impl Regime {
     }
 }
 
+/// A PGA bidding setting: one α level (sniper bid, bps of the prize it sees) and one β level
+/// (LP cancel bid, bps of exposure). `idx` is its position in the sweep.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+struct Bid {
+    idx: usize,
+    alpha_level_bps: u64,
+    beta_bps: u64,
+    split: bool,
+}
+
+impl Bid {
+    /// Each sniper's α with `n` snipers: the level, or the level ÷ n when split.
+    fn alpha_bps(&self, n: u32) -> u64 {
+        if self.split {
+            self.alpha_level_bps / n as u64
+        } else {
+            self.alpha_level_bps
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 struct Cell {
     regime: Regime,
@@ -75,6 +122,8 @@ struct Cell {
     gap: (u64, u64),
     snipers: u32,
     rule: usize,
+    /// PGA cells only: nobody bids under the other rules.
+    bid: Option<Bid>,
 }
 
 impl Cell {
@@ -90,22 +139,79 @@ impl Cell {
     fn group(&self) -> (Regime, u64, (u64, u64), u32) {
         (self.regime, self.block_ms, self.gap, self.snipers)
     }
+
+    /// The arm within the group: rule and bidding.
+    fn arm(&self) -> (usize, Option<Bid>) {
+        (self.rule, self.bid)
+    }
+
+    fn alpha_bps(&self) -> u64 {
+        self.bid.map_or(0, |b| b.alpha_bps(self.snipers))
+    }
+
+    fn alpha_level_bps(&self) -> u64 {
+        self.bid.map_or(0, |b| b.alpha_level_bps)
+    }
+
+    fn beta_bps(&self) -> u64 {
+        self.bid.map_or(0, |b| b.beta_bps)
+    }
 }
 
-fn cells() -> Vec<Cell> {
+/// The PGA bidding settings: every α level crossed with every β level.
+fn bids(args: &Args) -> Vec<Bid> {
     let mut v = Vec::new();
-    for regime in [Regime::Weekday, Regime::Monday] {
-        for block_ms in BLOCKS_MS {
-            for gap in GAPS {
-                for snipers in SNIPERS {
-                    for rule in 0..3 {
-                        v.push(Cell {
-                            regime,
-                            block_ms,
-                            gap,
-                            snipers,
-                            rule,
-                        });
+    for &a in &args.alpha_bps {
+        for &b in &args.beta_bps {
+            v.push(Bid {
+                idx: v.len(),
+                alpha_level_bps: a,
+                beta_bps: b,
+                split: args.alpha_split,
+            });
+        }
+    }
+    v
+}
+
+fn cells(args: &Args) -> Vec<Cell> {
+    let bids = bids(args);
+    let keep_regime =
+        |r: Regime| args.regimes.is_empty() || args.regimes.iter().any(|x| x == r.name());
+    let keep_rule = |r: usize| {
+        args.rules.is_empty() || args.rules.iter().any(|x| x == OrderingRule::ALL[r].name())
+    };
+    let keep_block = |b: u64| args.blocks_ms.is_empty() || args.blocks_ms.contains(&b);
+    let keep_gap = |g: (u64, u64)| {
+        let x = g.0 as f64 / g.1 as f64;
+        args.gaps.is_empty() || args.gaps.iter().any(|y| (x - y).abs() < 1e-9)
+    };
+    let keep_n = |n: u32| args.snipers.is_empty() || args.snipers.contains(&n);
+    let mut v = Vec::new();
+    for regime in [Regime::Weekday, Regime::Monday]
+        .into_iter()
+        .filter(|&r| keep_regime(r))
+    {
+        for block_ms in BLOCKS_MS.into_iter().filter(|&b| keep_block(b)) {
+            for gap in GAPS.into_iter().filter(|&g| keep_gap(g)) {
+                for snipers in SNIPERS.into_iter().filter(|&n| keep_n(n)) {
+                    for rule in (0..3).filter(|&r| keep_rule(r)) {
+                        let arms: Vec<Option<Bid>> = if OrderingRule::ALL[rule] == OrderingRule::Pga
+                        {
+                            bids.iter().copied().map(Some).collect()
+                        } else {
+                            vec![None]
+                        };
+                        for bid in arms {
+                            v.push(Cell {
+                                regime,
+                                block_ms,
+                                gap,
+                                snipers,
+                                rule,
+                                bid,
+                            });
+                        }
                     }
                 }
             }
@@ -145,11 +251,26 @@ struct Row {
     half_spread_bps: f64,
     two_sided_share: f64,
     depth_lots: f64,
+    /// Share of the gap prize snipers took (docs/DECISIONS.md, entry 80), in [0, 1].
     monday_take_share: f64,
     monday_gap_ticks: f64,
     monday_lp_loss_usd: f64,
     monday_window_volume_usd: f64,
     unsequenced: u64,
+    /// The "span" the main chart measures: the run (weekday) or the window W (Monday open).
+    /// LP loss to snipers in dollars over it, and sniper and chain take over it in bps of the
+    /// span's volume and in dollars.
+    lp_loss_span_usd: f64,
+    sniper_take_span_bps: f64,
+    sniper_take_span_usd: f64,
+    chain_take_span_bps: f64,
+    chain_take_span_usd: f64,
+    /// The Monday gap prize split: snipers net of their fees, the chain, the LP's cancels.
+    monday_take_share_net: f64,
+    monday_chain_share: f64,
+    monday_lp_kept_share: f64,
+    monday_prize_usd: f64,
+    monday_sniper_took_usd: f64,
 }
 
 fn ratio(n: i128, d: i128) -> f64 {
@@ -182,6 +303,26 @@ fn row(cell: Cell, seed: u64, r: &sim::RunResult) -> Row {
         ),
         (Regime::Monday, None) => f64::NAN,
     };
+    // (LP loss to snipers in tick·lots, sniper take in cash, chain take in cash, volume in
+    // tick·lots) over the main chart's span.
+    let span: Option<(i128, i128, i128, i128)> = match (cell.regime, mo) {
+        (Regime::Weekday, _) => Some((
+            m.lp_loss_to_snipers(h),
+            m.sniper_take(h),
+            m.priority_fees,
+            m.notional_tick_lots,
+        )),
+        (Regime::Monday, Some(mo)) => Some((
+            mo.lp_loss_to_snipers,
+            mo.sniper_pnl,
+            mo.chain_fees,
+            mo.notional_tick_lots,
+        )),
+        (Regime::Monday, None) => None,
+    };
+    let span_f = |f: &dyn Fn((i128, i128, i128, i128)) -> f64| span.map_or(f64::NAN, f);
+    let mo_f = |f: &dyn Fn(&metrics::measure::MondayOpen) -> f64| mo.as_ref().map_or(f64::NAN, f);
+    let share = |(n, d): (i128, i128)| ratio(n, d);
     Row {
         cell,
         seed,
@@ -220,6 +361,16 @@ fn row(cell: Cell, seed: u64, r: &sim::RunResult) -> Row {
             usd(mo.notional_tick_lots * CASH_PER_TICK_LOT)
         }),
         unsequenced: r.counts.unsequenced,
+        lp_loss_span_usd: span_f(&|s| usd(s.0 * CASH_PER_TICK_LOT)),
+        sniper_take_span_bps: span_f(&|s| bps(s.1, s.3 * CASH_PER_TICK_LOT)),
+        sniper_take_span_usd: span_f(&|s| usd(s.1)),
+        chain_take_span_bps: span_f(&|s| bps(s.2, s.3 * CASH_PER_TICK_LOT)),
+        chain_take_span_usd: span_f(&|s| usd(s.2)),
+        monday_take_share_net: mo_f(&|mo| share(mo.net_share())),
+        monday_chain_share: mo_f(&|mo| share(mo.chain_share())),
+        monday_lp_kept_share: mo_f(&|mo| share(mo.lp_share())),
+        monday_prize_usd: mo_f(&|mo| usd(mo.prize * CASH_PER_TICK_LOT)),
+        monday_sniper_took_usd: mo_f(&|mo| usd(mo.sniper_took * CASH_PER_TICK_LOT)),
     }
 }
 
@@ -243,6 +394,17 @@ fn metric_values(r: &Row) -> Vec<(&'static str, f64)> {
         ("half_spread_bps", r.half_spread_bps),
         ("depth_lots", r.depth_lots),
         ("monday_take_share", r.monday_take_share),
+        // Appended after phase 3, so the earlier metrics keep their bootstrap streams.
+        ("lp_loss_span_usd", r.lp_loss_span_usd),
+        ("sniper_take_span_bps", r.sniper_take_span_bps),
+        ("sniper_take_span_usd", r.sniper_take_span_usd),
+        ("chain_take_span_bps", r.chain_take_span_bps),
+        ("chain_take_span_usd", r.chain_take_span_usd),
+        ("monday_take_share_net", r.monday_take_share_net),
+        ("monday_chain_share", r.monday_chain_share),
+        ("monday_lp_kept_share", r.monday_lp_kept_share),
+        ("monday_prize_usd", r.monday_prize_usd),
+        ("monday_sniper_took_usd", r.monday_sniper_took_usd),
     ]
 }
 
@@ -258,6 +420,10 @@ fn scenario_for(base: &BTreeMap<Regime, Scenario>, c: &Cell) -> Scenario {
     s.sequencer.block_ms = c.block_ms;
     s.sniper.count = c.snipers;
     s.set_speed_gap(c.gap.0, c.gap.1);
+    if let Some(b) = c.bid {
+        s.sniper.alpha_bps = b.alpha_bps(c.snipers);
+        s.lp.beta_bps = b.beta_bps;
+    }
     s
 }
 
@@ -324,7 +490,10 @@ fn run(args: Args) -> Result<(), String> {
     let opts = RunOpts {
         monday_window_ns: args.monday_window_s * 1_000_000_000,
     };
-    let cells = cells();
+    let cells = cells(&args);
+    if cells.is_empty() {
+        return Err("the filters leave no cells".into());
+    }
     let jobs: Vec<(Cell, u64)> = cells
         .iter()
         .flat_map(|&c| (1..=args.seeds).map(move |s| (c, s)))
@@ -360,7 +529,11 @@ fn run(args: Args) -> Result<(), String> {
     write_summary(&summary, &args.out.join("grid_summary.parquet"))?;
     let pairs = paired(&rows, args.resamples);
     write_pairs(&pairs, &args.out.join("grid_pairs.parquet"))?;
-    report(&summary, &pairs, args.seeds);
+    if bids(&args).len() == 1 {
+        report(&summary, &pairs, args.seeds);
+    } else {
+        report_sweep(&summary);
+    }
     eprintln!(
         "wrote grid_runs, grid_summary and grid_pairs parquet to {}",
         args.out.display()
@@ -387,7 +560,9 @@ fn cell_key(c: &Cell) -> u64 {
     let g = GAPS.iter().position(|&g| g == c.gap).unwrap() as u64;
     let n = SNIPERS.iter().position(|&n| n == c.snipers).unwrap() as u64;
     let b = BLOCKS_MS.iter().position(|&b| b == c.block_ms).unwrap() as u64;
-    (((r * 4 + b) * 3 + g) * 3 + n) * 3 + c.rule as u64
+    // The first bidding setting keeps the phase 3 streams; later ones get their own.
+    let bid = c.bid.map_or(0, |b| b.idx as u64);
+    (((r * 4 + b) * 3 + g) * 3 + n) * 3 + c.rule as u64 + 216 * bid
 }
 
 fn by_cell(rows: &[Row]) -> BTreeMap<Cell, Vec<&Row>> {
@@ -420,11 +595,13 @@ fn summarise(rows: &[Row], resamples: usize) -> Vec<Summary> {
     out
 }
 
+type Arm = (usize, Option<Bid>);
+
 struct Pair {
     group: (Regime, u64, (u64, u64), u32),
     metric: &'static str,
-    a: OrderingRule,
-    b: OrderingRule,
+    a: Arm,
+    b: Arm,
     n: usize,
     mean_diff: f64,
     sd_diff: f64,
@@ -438,42 +615,76 @@ impl Pair {
     }
 }
 
-const PAIR_METRICS: [&str; 3] = ["lp_loss_bps", "sniper_take_bps", "lp_race_win_rate"];
-const RULE_PAIRS: [(usize, usize); 3] = [(0, 1), (0, 2), (1, 2)];
+/// Metrics compared on paired seeds. `lp_loss_span_usd` is the dollar check on the bps ranking
+/// (the bps denominator, volume, depends on the rule).
+const PAIR_METRICS: [&str; 4] = [
+    "lp_loss_bps",
+    "sniper_take_bps",
+    "lp_race_win_rate",
+    "lp_loss_span_usd",
+];
+
+/// The arm pairs compared within a group: FCFS vs each PGA arm, FCFS vs cancel priority, each
+/// PGA arm vs cancel priority. With one PGA arm that is the phase 3 order (fcfs-pga, fcfs-cp,
+/// pga-cp). Pairs with a missing arm (filtered out) are skipped.
+fn arm_pairs(arms: &[Arm]) -> Vec<(Arm, Arm)> {
+    let fcfs = arms.iter().find(|a| a.0 == 0).copied();
+    let cp = arms.iter().find(|a| a.0 == 2).copied();
+    let pga: Vec<Arm> = arms.iter().filter(|a| a.0 == 1).copied().collect();
+    let mut v = Vec::new();
+    if let Some(f) = fcfs {
+        v.extend(pga.iter().map(|&p| (f, p)));
+    }
+    if let (Some(f), Some(c)) = (fcfs, cp) {
+        v.push((f, c));
+    }
+    if let Some(c) = cp {
+        v.extend(pga.iter().map(|&p| (p, c)));
+    }
+    v
+}
 
 fn paired(rows: &[Row], resamples: usize) -> Vec<Pair> {
-    // group → rule → seed → row
-    let mut g: BTreeMap<_, BTreeMap<usize, BTreeMap<u64, &Row>>> = BTreeMap::new();
+    // group → arm → seed → row
+    let mut g: BTreeMap<_, BTreeMap<Arm, BTreeMap<u64, &Row>>> = BTreeMap::new();
     for r in rows {
         g.entry(r.cell.group())
             .or_default()
-            .entry(r.cell.rule)
+            .entry(r.cell.arm())
             .or_default()
             .insert(r.seed, r);
     }
     let mut out = Vec::new();
-    for (gi, (group, by_rule)) in g.iter().enumerate() {
+    for (gi, (group, by_arm)) in g.iter().enumerate() {
+        let arms: Vec<Arm> = by_arm.keys().copied().collect();
+        let pairs = arm_pairs(&arms);
         for (mi, metric) in PAIR_METRICS.iter().enumerate() {
             let k = metric_values(rows.first().unwrap())
                 .iter()
                 .position(|x| x.0 == *metric)
                 .unwrap();
-            for (pi, &(a, b)) in RULE_PAIRS.iter().enumerate() {
-                let diffs: Vec<f64> = by_rule[&a]
+            for (pi, &(a, b)) in pairs.iter().enumerate() {
+                let diffs: Vec<f64> = by_arm[&a]
                     .iter()
                     .filter_map(|(seed, ra)| {
-                        let rb = by_rule[&b].get(seed)?;
+                        let rb = by_arm[&b].get(seed)?;
                         let d = metric_values(ra)[k].1 - metric_values(rb)[k].1;
                         d.is_finite().then_some(d)
                     })
                     .collect();
-                let key = ((gi * 8 + mi) * 4 + pi) as u64 + (1 << 40);
+                // Three pairs per group keep the phase 3 streams; a sweep's extra pairs get
+                // their own.
+                let key = if pairs.len() <= 3 {
+                    ((gi * 8 + mi) * 4 + pi) as u64 + (1 << 40)
+                } else {
+                    ((gi * 8 + mi) * 1024 + pi) as u64 + (2 << 40)
+                };
                 let (lo, hi) = boot_ci(&diffs, resamples, key);
                 out.push(Pair {
                     group: *group,
                     metric,
-                    a: OrderingRule::ALL[a],
-                    b: OrderingRule::ALL[b],
+                    a,
+                    b,
                     n: diffs.len(),
                     mean_diff: if diffs.is_empty() {
                         f64::NAN
@@ -504,6 +715,9 @@ fn write_runs(rows: &[Row], path: &std::path::Path) -> Result<(), String> {
     t.push("block_ms", i(&|r| r.cell.block_ms as i64));
     t.push("speed_gap", x(&|r| r.cell.gap_f64()));
     t.push("snipers", i(&|r| r.cell.snipers as i64));
+    t.push("alpha_level_bps", i(&|r| r.cell.alpha_level_bps() as i64));
+    t.push("alpha_bps", i(&|r| r.cell.alpha_bps() as i64));
+    t.push("beta_bps", i(&|r| r.cell.beta_bps() as i64));
     t.push("seed", i(&|r| r.seed as i64));
     t.push("fills", i(&|r| r.fills as i64));
     t.push("volume_lots", i(&|r| r.volume_lots as i64));
@@ -545,7 +759,27 @@ fn write_runs(rows: &[Row], path: &std::path::Path) -> Result<(), String> {
         x(&|r| r.monday_window_volume_usd),
     );
     t.push("unsequenced", i(&|r| r.unsequenced as i64));
+    t.push("lp_loss_span_usd", x(&|r| r.lp_loss_span_usd));
+    t.push("sniper_take_span_bps", x(&|r| r.sniper_take_span_bps));
+    t.push("sniper_take_span_usd", x(&|r| r.sniper_take_span_usd));
+    t.push("chain_take_span_bps", x(&|r| r.chain_take_span_bps));
+    t.push("chain_take_span_usd", x(&|r| r.chain_take_span_usd));
+    t.push("monday_take_share_net", x(&|r| r.monday_take_share_net));
+    t.push("monday_chain_share", x(&|r| r.monday_chain_share));
+    t.push("monday_lp_kept_share", x(&|r| r.monday_lp_kept_share));
+    t.push("monday_prize_usd", x(&|r| r.monday_prize_usd));
+    t.push("monday_sniper_took_usd", x(&|r| r.monday_sniper_took_usd));
     t.write(path)
+}
+
+/// The bidding columns of a cell or arm: α level, each sniper's α, β (0 when nobody bids).
+fn push_bid_cols(t: &mut Table, prefix: [&'static str; 3], cells: &[(u32, Option<Bid>)]) {
+    let col = |f: &dyn Fn(u32, Option<Bid>) -> u64| {
+        Col::I64(cells.iter().map(|&(n, b)| f(n, b) as i64).collect())
+    };
+    t.push(prefix[0], col(&|_, b| b.map_or(0, |b| b.alpha_level_bps)));
+    t.push(prefix[1], col(&|n, b| b.map_or(0, |b| b.alpha_bps(n))));
+    t.push(prefix[2], col(&|_, b| b.map_or(0, |b| b.beta_bps)));
 }
 
 fn write_summary(rows: &[Summary], path: &std::path::Path) -> Result<(), String> {
@@ -570,6 +804,8 @@ fn write_summary(rows: &[Summary], path: &std::path::Path) -> Result<(), String>
         "snipers",
         Col::I64(rows.iter().map(|r| r.cell.snipers as i64).collect()),
     );
+    let arms: Vec<(u32, Option<Bid>)> = rows.iter().map(|r| (r.cell.snipers, r.cell.bid)).collect();
+    push_bid_cols(&mut t, ["alpha_level_bps", "alpha_bps", "beta_bps"], &arms);
     t.push(
         "metric",
         Col::Str(rows.iter().map(|r| r.metric.into()).collect()),
@@ -610,11 +846,32 @@ fn write_pairs(rows: &[Pair], path: &std::path::Path) -> Result<(), String> {
     );
     t.push(
         "rule_a",
-        Col::Str(rows.iter().map(|r| r.a.name().into()).collect()),
+        Col::Str(
+            rows.iter()
+                .map(|r| OrderingRule::ALL[r.a.0].name().into())
+                .collect(),
+        ),
     );
     t.push(
         "rule_b",
-        Col::Str(rows.iter().map(|r| r.b.name().into()).collect()),
+        Col::Str(
+            rows.iter()
+                .map(|r| OrderingRule::ALL[r.b.0].name().into())
+                .collect(),
+        ),
+    );
+    let arm = |f: &dyn Fn(&Pair) -> Arm| -> Vec<(u32, Option<Bid>)> {
+        rows.iter().map(|r| (r.group.3, f(r).1)).collect()
+    };
+    push_bid_cols(
+        &mut t,
+        ["alpha_level_a_bps", "alpha_a_bps", "beta_a_bps"],
+        &arm(&|p| p.a),
+    );
+    push_bid_cols(
+        &mut t,
+        ["alpha_level_b_bps", "alpha_b_bps", "beta_b_bps"],
+        &arm(&|p| p.b),
     );
     t.push("n", Col::I64(rows.iter().map(|r| r.n as i64).collect()));
     t.push(
@@ -641,24 +898,17 @@ fn write_pairs(rows: &[Pair], path: &std::path::Path) -> Result<(), String> {
 fn report(summary: &[Summary], pairs: &[Pair], seeds: u64) {
     println!("\n## Per-cell spread of LP loss to snipers (lp_loss_bps), seeds = {seeds}");
     println!("regime       B ms  gap  N  | fcfs mean (sd)      | pga mean (sd)       | cancel_priority mean (sd)");
-    let lp: BTreeMap<Cell, &Summary> = summary
+    let lp: BTreeMap<_, &Summary> = summary
         .iter()
         .filter(|s| s.metric == "lp_loss_bps")
-        .map(|s| (s.cell, s))
+        .map(|s| ((s.cell.group(), s.cell.rule), s))
         .collect();
-    let mut groups: Vec<_> = lp.keys().map(|c| c.group()).collect();
+    let mut groups: Vec<_> = lp.keys().map(|k| k.0).collect();
     groups.dedup();
     for g in &groups {
-        let cell = |rule| Cell {
-            regime: g.0,
-            block_ms: g.1,
-            gap: g.2,
-            snipers: g.3,
-            rule,
-        };
-        let f = |rule| {
-            let s = lp[&cell(rule)];
-            format!("{:>8.3} ({:>6.3})", s.mean, s.sd)
+        let f = |rule| match lp.get(&(*g, rule)) {
+            Some(s) => format!("{:>8.3} ({:>6.3})", s.mean, s.sd),
+            None => format!("{:>17}", "-"),
         };
         println!(
             "{:<12} {:>4} {:>4.1} {:>2}  | {} | {} | {}",
@@ -703,8 +953,8 @@ fn report(summary: &[Summary], pairs: &[Pair], seeds: u64) {
             p.group.1,
             p.group.2 .0 as f64 / p.group.2 .1 as f64,
             p.group.3,
-            p.a.name(),
-            p.b.name(),
+            OrderingRule::ALL[p.a.0].name(),
+            OrderingRule::ALL[p.b.0].name(),
             p.mean_diff,
             p.sd_diff,
             n
@@ -721,16 +971,105 @@ fn report(summary: &[Summary], pairs: &[Pair], seeds: u64) {
     println!("\nseparated now (95% CI of the paired difference excludes 0): {sep}/{tot}");
 }
 
+/// A PGA bidding sweep: per group and PGA arm, who captures the prize.
+fn report_sweep(summary: &[Summary]) {
+    let get: BTreeMap<(Cell, &str), &Summary> =
+        summary.iter().map(|s| ((s.cell, s.metric), s)).collect();
+    let mut cells: Vec<Cell> = summary.iter().map(|s| s.cell).collect();
+    cells.dedup();
+    println!("\n## PGA bidding sweep (means; span = the run, or W after the Monday reopen)");
+    println!(
+        "regime       B ms  gap  N  rule   α lvl  α/sniper  β    | LP loss bps   $     | sniper bps    $     | chain bps     $     | LP wins | gap share (net)"
+    );
+    for c in cells {
+        let m = |name: &str| get.get(&(c, name)).map_or(f64::NAN, |s| s.mean);
+        println!(
+            "{:<12} {:>4} {:>4.1} {:>2}  {:<6} {:>5} {:>8} {:>5}  | {:>7.3} {:>9.2} | {:>7.3} {:>9.2} | {:>7.3} {:>9.2} | {:>7.3} | {:>6.3} ({:>6.3})",
+            c.regime.name(),
+            c.block_ms,
+            c.gap_f64(),
+            c.snipers,
+            &c.rule().name()[..c.rule().name().len().min(6)],
+            c.alpha_level_bps(),
+            c.alpha_bps(),
+            c.beta_bps(),
+            m("lp_loss_bps"),
+            m("lp_loss_span_usd"),
+            m("sniper_take_span_bps"),
+            m("sniper_take_span_usd"),
+            m("chain_take_span_bps"),
+            m("chain_take_span_usd"),
+            m("lp_race_win_rate"),
+            m("monday_take_share"),
+            m("monday_take_share_net"),
+        );
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
+    fn args(extra: &[&str]) -> Args {
+        Args::parse_from(std::iter::once("grid").chain(extra.iter().copied()))
+    }
+
     #[test]
     fn grid_has_216_cells_with_distinct_keys() {
-        let c = cells();
+        let c = cells(&args(&[]));
         assert_eq!(c.len(), 216);
         let keys: std::collections::BTreeSet<u64> = c.iter().map(cell_key).collect();
         assert_eq!(keys.len(), 216);
+    }
+
+    #[test]
+    fn a_bidding_sweep_multiplies_only_the_pga_cells() {
+        let c = cells(&args(&[
+            "--alpha-bps",
+            "500,1000,2500,5000",
+            "--beta-bps",
+            "0,2500",
+            "--regimes",
+            "weekday",
+            "--blocks-ms",
+            "250",
+            "--gaps",
+            "0.5",
+            "--snipers",
+            "3",
+        ]));
+        // FCFS and cancel priority once, PGA once per (α, β).
+        assert_eq!(c.len(), 2 + 4 * 2);
+        let keys: std::collections::BTreeSet<u64> = c.iter().map(cell_key).collect();
+        assert_eq!(keys.len(), c.len());
+        let arms: Vec<Arm> = c.iter().map(|c| c.arm()).collect();
+        assert_eq!(arm_pairs(&arms).len(), 8 + 1 + 8);
+        // The default PGA arm keeps the phase 3 bootstrap stream.
+        let one = cells(&args(&["--regimes", "weekday"]));
+        let pga = one.iter().find(|c| c.rule == 1).unwrap();
+        assert_eq!(pga.bid.unwrap().idx, 0);
+        assert_eq!(arm_pairs(&[(0, None), pga.arm(), (2, None)]).len(), 3);
+    }
+
+    #[test]
+    fn split_alpha_divides_the_level_by_the_sniper_count() {
+        let a = args(&["--alpha-bps", "7500", "--alpha-split"]);
+        let c = cells(&a);
+        let base: BTreeMap<Regime, Scenario> = [
+            (Regime::Weekday, Scenario::default()),
+            (Regime::Monday, Scenario::default()),
+        ]
+        .into();
+        for cell in c.iter().filter(|c| c.rule == 1) {
+            let s = scenario_for(&base, cell);
+            assert_eq!(s.sniper.alpha_bps, 7_500 / cell.snipers as u64);
+        }
+        let fcfs = c.iter().find(|c| c.rule == 0).unwrap();
+        assert_eq!(
+            scenario_for(&base, fcfs).sniper.alpha_bps,
+            5_000,
+            "inert, spec default"
+        );
     }
 
     #[test]
