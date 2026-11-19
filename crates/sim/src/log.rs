@@ -212,8 +212,10 @@ impl FillsHasher {
 pub fn replay_fills_hash(records: &[LogRecord]) -> String {
     let mut e = Engine::new();
     let mut h = FillsHasher::default();
+    let mut events = Vec::new();
     for r in records {
-        for ev in e.on_message(r) {
+        e.on_message_into(r, &mut events);
+        for ev in &events {
             h.update(ev.seq, &ev.kind);
         }
     }

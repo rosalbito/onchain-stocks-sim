@@ -197,6 +197,7 @@ struct Sim {
     reopen: Option<(i64, i64)>,
     counts: Counts,
     fills: FillsHasher,
+    events: Vec<Event>,
     market_batch: Vec<Event>,
     classes: BTreeMap<AgentId, AccountClass>,
     take_at_fill: BTreeMap<AccountClass, i128>,
@@ -290,6 +291,7 @@ impl Sim {
             reopen: None,
             counts: Counts::default(),
             fills: FillsHasher::default(),
+            events: Vec::new(),
             market_batch: Vec::new(),
             path: Vec::new(),
             decided: Vec::new(),
@@ -621,7 +623,9 @@ impl Sim {
         self.records.push(rec);
         self.decided.push(decided);
         self.ledger.on_included(&rec);
-        let events = self.engine.on_message(&rec);
+        // One reused event buffer: the engine allocates nothing per message for its output.
+        let mut events = std::mem::take(&mut self.events);
+        self.engine.on_message_into(&rec, &mut events);
         self.ledger.on_events(&events);
         self.races.on_record(&rec, &events);
 
@@ -659,7 +663,8 @@ impl Sim {
                 _ => {}
             }
         }
-        self.market_batch.extend(events);
+        self.market_batch.extend_from_slice(&events);
+        self.events = events;
     }
 
     /// Deliver the market data of the block just processed to every agent that watches it.

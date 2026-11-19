@@ -33,7 +33,13 @@ pub struct Engine {
     bids: BTreeMap<Px, Level>,
     asks: BTreeMap<Px, Level>,
     last_seq: Option<u64>,
+    /// Empty order queues of removed levels, reused when a new level opens, so a level that
+    /// comes and goes does not allocate each time.
+    spare: Vec<VecDeque<usize>>,
 }
+
+/// At most this many spare level queues are kept.
+const MAX_SPARE: usize = 256;
 
 /// A resting order as seen from outside the engine.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -51,29 +57,37 @@ impl Engine {
     }
 
     /// Process one sequenced record and return the events it caused, each tagged with its `seq`.
+    /// Allocates the returned `Vec`; [`Engine::on_message_into`] reuses a caller's buffer.
     pub fn on_message(&mut self, msg: &LogRecord) -> Events {
         let mut out = Vec::new();
+        self.on_message_into(msg, &mut out);
+        out
+    }
+
+    /// [`Engine::on_message`] into a reused buffer: `out` is cleared, then holds the events.
+    pub fn on_message_into(&mut self, msg: &LogRecord, out: &mut Events) {
+        out.clear();
         let seq = msg.seq;
         let push = |out: &mut Events, kind| out.push(Event { seq, kind });
 
         if let Some(last) = self.last_seq {
             if seq <= last {
                 push(
-                    &mut out,
+                    out,
                     EventKind::Rejected {
                         agent: msg.agent,
                         reason: RejectReason::SeqNotIncreasing,
                     },
                 );
-                return out;
+                return;
             }
         }
         self.last_seq = Some(seq);
 
         match msg.kind {
-            MsgKind::Tick { px_ticks } => push(&mut out, EventKind::Tick { px: px_ticks }),
+            MsgKind::Tick { px_ticks } => push(out, EventKind::Tick { px: px_ticks }),
             MsgKind::Config { .. } => {}
-            MsgKind::Cancel { order_id, .. } => self.cancel(seq, msg.agent, order_id, &mut out),
+            MsgKind::Cancel { order_id, .. } => self.cancel(seq, msg.agent, order_id, out),
             MsgKind::New {
                 side,
                 px_ticks,
@@ -83,7 +97,7 @@ impl Engine {
             } => {
                 if qty_lots == 0 {
                     push(
-                        &mut out,
+                        out,
                         EventKind::Rejected {
                             agent: msg.agent,
                             reason: RejectReason::ZeroQty,
@@ -91,18 +105,26 @@ impl Engine {
                     );
                 } else if px_ticks <= 0 {
                     push(
-                        &mut out,
+                        out,
                         EventKind::Rejected {
                             agent: msg.agent,
                             reason: RejectReason::NonPositivePrice,
                         },
                     );
                 } else {
-                    self.new_order(seq, msg.agent, side, px_ticks, qty_lots, tif, &mut out);
+                    self.new_order(seq, msg.agent, side, px_ticks, qty_lots, tif, out);
                 }
             }
         }
-        out
+    }
+
+    /// Keep an emptied level's queue for the next new level.
+    fn recycle(spare: &mut Vec<VecDeque<usize>>, level: Option<Level>) {
+        if let Some(level) = level {
+            if spare.len() < MAX_SPARE {
+                spare.push(level.orders);
+            }
+        }
     }
 
     fn cancel(&mut self, seq: u64, agent: AgentId, order_id: OrderId, out: &mut Events) {
@@ -140,7 +162,7 @@ impl Engine {
         level.total -= order.qty;
         let level_qty = level.total;
         if level.orders.is_empty() {
-            book.remove(&order.px);
+            Self::recycle(&mut self.spare, book.remove(&order.px));
         }
         out.push(Event {
             seq,
@@ -234,7 +256,7 @@ impl Engine {
             if maker_left == 0 {
                 level.orders.pop_front();
                 if level.orders.is_empty() {
-                    book.remove(&level_px);
+                    Self::recycle(&mut self.spare, book.remove(&level_px));
                 }
                 self.orders.remove(maker_key);
                 self.index.remove(&maker_id);
@@ -289,7 +311,11 @@ impl Engine {
                     Side::Buy => &mut self.bids,
                     Side::Sell => &mut self.asks,
                 };
-                let level = book.entry(px).or_default();
+                let spare = &mut self.spare;
+                let level = book.entry(px).or_insert_with(|| Level {
+                    orders: spare.pop().unwrap_or_default(),
+                    total: 0,
+                });
                 level.orders.push_back(key);
                 level.total += remaining;
                 out.push(Event {

@@ -11,11 +11,13 @@ use sim::OrderingRule;
 use crate::alloc;
 use crate::profiles::{self, Profile};
 
-/// Replay a log through a fresh engine once.
+/// Replay a log through a fresh engine once, with one reused event buffer.
 fn replay(records: &[LogRecord]) {
     let mut e = Engine::new();
+    let mut out = Vec::new();
     for r in records {
-        black_box(e.on_message(black_box(r)));
+        e.on_message_into(black_box(r), &mut out);
+        black_box(&out);
     }
     black_box(&e);
 }
@@ -43,11 +45,13 @@ pub fn median(v: &mut [f64]) -> f64 {
 pub fn per_msg_hist(records: &[LogRecord], reps: usize) -> Histogram<u64> {
     let mut h = Histogram::<u64>::new_with_bounds(1, 10_000_000, 3).unwrap();
     replay(records);
+    let mut out = Vec::new();
     for _ in 0..reps {
         let mut e = Engine::new();
         for r in records {
             let t = Instant::now();
-            black_box(e.on_message(black_box(r)));
+            e.on_message_into(black_box(r), &mut out);
+            black_box(&out);
             h.saturating_record(t.elapsed().as_nanos() as u64);
         }
     }
@@ -95,14 +99,29 @@ impl Allocs {
     }
 }
 
-pub fn allocs(records: &[LogRecord]) -> Allocs {
+/// Which engine entry point a measurement calls.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Api {
+    /// `on_message`, the spec's interface: returns a fresh `Vec` per call.
+    Owned,
+    /// `on_message_into` with one buffer reused across calls.
+    Reused,
+}
+
+pub fn allocs(records: &[LogRecord], api: Api) -> Allocs {
     let mut a = Allocs::default();
     let mut e = Engine::new();
+    let mut buf = Vec::new();
     for r in records {
         let k = kind_idx(&r.kind);
         let before = alloc::snapshot();
-        let out = e.on_message(r);
-        drop(black_box(out));
+        match api {
+            Api::Owned => drop(black_box(e.on_message(r))),
+            Api::Reused => {
+                e.on_message_into(r, &mut buf);
+                black_box(&buf);
+            }
+        }
         let d = alloc::snapshot() - before;
         a.msgs[k] += 1;
         a.allocs[k] += d.allocs;
@@ -133,6 +152,7 @@ pub fn block_cost(n: usize, rule: OrderingRule, reps: usize) -> (f64, f64) {
             .collect();
         let mut e = profiles::engine_after(&b.warm);
         let first_seq = b.warm.len() as u64 + 1;
+        let mut out = Vec::with_capacity(64);
         let t = Instant::now();
         sim::sequencer::sort_block(rule, &mut pending);
         for (i, p) in pending.iter().enumerate() {
@@ -143,7 +163,8 @@ pub fn block_cost(n: usize, rule: OrderingRule, reps: usize) -> (f64, f64) {
                 agent: p.agent,
                 kind: p.kind,
             };
-            black_box(e.on_message(&rec));
+            e.on_message_into(&rec, &mut out);
+            black_box(&out);
         }
         per_block.push(t.elapsed().as_nanos() as f64);
     }

@@ -93,41 +93,48 @@ fn main() {
 }
 
 fn alloc_table(recorded: &[profiles::Profile]) {
-    println!("### Allocations per message (engine::on_message)\n");
-    print!("| profile | messages | allocs / msg | reallocs / msg | total / msg |");
-    for k in engine_cost::KINDS {
-        print!(" {k} |");
-    }
-    println!("\n|---|---:|---:|---:|---:|---:|---:|---:|---:|");
-    let mut rows: Vec<(&str, usize, engine_cost::Allocs)> = recorded
-        .iter()
-        .map(|p| (p.name, p.records.len(), engine_cost::allocs(&p.records)))
-        .collect();
     let b = profiles::burst(200, 10_000, OrderingRule::Fcfs, 7);
-    let mut all = b.warm.clone();
-    all.extend(&b.block);
-    rows.push((
-        "monday burst (synthetic)",
-        all.len(),
-        engine_cost::allocs(&all),
-    ));
-    for (name, n, a) in rows {
-        print!(
-            "| {name} | {n} | {:.3} | {:.3} | {:.3} |",
-            a.allocs_per_msg(),
-            a.reallocs_per_msg(),
-            a.per_msg()
-        );
-        for k in 0..4 {
-            print!(" {:.3} |", a.per_kind(k));
+    let mut burst = b.warm.clone();
+    burst.extend(&b.block);
+    let mut flows: Vec<(&str, &[engine::LogRecord])> =
+        recorded.iter().map(|p| (p.name, &p.records[..])).collect();
+    flows.push(("monday burst (synthetic)", &burst));
+    for (api, title) in [
+        (
+            engine_cost::Api::Owned,
+            "engine::on_message (returns a new Vec)",
+        ),
+        (
+            engine_cost::Api::Reused,
+            "engine::on_message_into (reused buffer)",
+        ),
+    ] {
+        println!("### Allocations per message: {title}\n");
+        print!("| profile | messages | allocs / msg | reallocs / msg | total / msg |");
+        for k in engine_cost::KINDS {
+            print!(" {k} |");
+        }
+        println!("\n|---|---:|---:|---:|---:|---:|---:|---:|---:|");
+        for &(name, records) in &flows {
+            let a = engine_cost::allocs(records, api);
+            print!(
+                "| {name} | {} | {:.3} | {:.3} | {:.3} |",
+                records.len(),
+                a.allocs_per_msg(),
+                a.reallocs_per_msg(),
+                a.per_msg()
+            );
+            for k in 0..4 {
+                print!(" {:.3} |", a.per_kind(k));
+            }
+            println!();
         }
         println!();
     }
-    println!();
 }
 
 fn engine_table(recorded: &[profiles::Profile], budget: Duration) {
-    println!("### Engine alone, per load profile\n");
+    println!("### Engine alone (on_message_into), per load profile\n");
     println!("| profile | messages | mix GTC/IOC/cancel/tick | ns/msg (sustained) | msgs/s | p50 ns | p99 ns | p99.9 ns |");
     println!("|---|---:|---|---:|---:|---:|---:|---:|");
     for p in recorded {

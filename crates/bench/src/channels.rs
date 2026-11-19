@@ -61,6 +61,7 @@ impl Layer {
 /// The consumer side: match the message, record its latency if paced.
 struct Sink {
     engine: Engine,
+    out: Vec<engine::Event>,
     hist: Histogram<u64>,
     paced: bool,
 }
@@ -69,6 +70,7 @@ impl Sink {
     fn new(paced: bool) -> Self {
         Self {
             engine: Engine::new(),
+            out: Vec::with_capacity(64),
             hist: Histogram::new_with_bounds(1, 1_000_000_000, 3).unwrap(),
             paced,
         }
@@ -76,7 +78,8 @@ impl Sink {
 
     #[inline]
     fn take(&mut self, m: Msg) {
-        black_box(self.engine.on_message(&m.rec));
+        self.engine.on_message_into(&m.rec, &mut self.out);
+        black_box(&self.out);
         if self.paced {
             self.hist
                 .saturating_record(m.sent.elapsed().as_nanos() as u64);
