@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Stale Quotes</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <header class="top">
+    <div class="brand">
+      <h1>Stale Quotes</h1>
+      <p class="label">latency races and ordering rules for on-chain stocks</p>
+    </div>
+    <dl class="status">
+      <div><dt>scenario</dt><dd id="st-scenario">–</dd></div>
+      <div><dt>rule</dt><dd id="st-rule">–</dd></div>
+      <div><dt>block B</dt><dd id="st-block">–</dd></div>
+      <div><dt>speed</dt><dd id="st-speed">–</dd></div>
+      <div><dt>load</dt><dd id="st-load">–</dd></div>
+      <div class="clock"><dt id="st-clock-label">virtual time</dt><dd id="st-clock">–</dd></div>
+    </dl>
+  </header>
+
+  <main class="grid">
+    <section class="panel book" aria-label="Order book">
+      <h2 class="label">order book <span id="book-note" class="note"></span></h2>
+      <ol id="asks" class="ladder asks"></ol>
+      <div class="spread" id="spread">–</div>
+      <ol id="bids" class="ladder bids"></ol>
+    </section>
+
+    <section class="panel price" aria-label="Price">
+      <div class="eclipse" id="eclipse" aria-hidden="true"></div>
+      <h2 class="label">price <span class="legend"><i class="k-nasdaq"></i>nasdaq <i class="k-mid"></i>book mid <i class="k-hidden"></i>nasdaq hidden</span></h2>
+      <div class="price-figures">
+        <div><span class="label">nasdaq</span><b id="px-nasdaq">–</b></div>
+        <div><span class="label">book mid</span><b id="px-mid">–</b></div>
+        <div><span class="label">gap</span><b id="px-gap">–</b></div>
+      </div>
+      <canvas id="chart"></canvas>
+    </section>
+
+    <section class="panel races" aria-label="Races">
+      <h2 class="label">races <span class="note" id="race-open"></span></h2>
+      <div class="race-totals">
+        <div><span class="label">sniper won</span><b id="r-sniper">0</b></div>
+        <div><span class="label">LP won</span><b id="r-lp">0</b></div>
+        <div><span class="label">LP win rate</span><b id="r-rate">–</b></div>
+      </div>
+      <table class="feed">
+        <thead><tr><th>t</th><th>winner</th><th>at stake</th><th>race</th><th>rule</th></tr></thead>
+        <tbody id="feed"></tbody>
+      </table>
+    </section>
+
+    <section class="panel accounts" aria-label="PnL by account class">
+      <h2 class="label">pnl by account class <span class="note">marked to nasdaq</span></h2>
+      <ul id="pnl" class="pnl"></ul>
+      <p class="zero"><span class="label">sum</span><b id="pnl-sum">–</b></p>
+    </section>
+
+    <section class="panel engine" aria-label="Engine">
+      <h2 class="label">engine <span class="note">one writer thread</span></h2>
+      <div class="engine-figures">
+        <div><span class="label">msgs / s</span><b id="e-rate">–</b></div>
+        <div><span class="label">block</span><b id="e-block">–</b></div>
+        <div><span class="label">seq</span><b id="e-seq">–</b></div>
+      </div>
+      <div class="latency">
+        <span class="label">on_message latency (standby)</span>
+        <div class="lat-row">
+          <div><span class="label">p50</span><b id="e-p50">–</b></div>
+          <div><span class="label">p99</span><b id="e-p99">–</b></div>
+          <div><span class="label">p99.9</span><b id="e-p999">–</b></div>
+        </div>
+      </div>
+      <ul id="rings" class="rings"></ul>
+      <p class="checks"><span id="c-standby">standby –</span><span id="c-replay">replay –</span></p>
+    </section>
+  </main>
+
+  <footer class="controls" aria-label="Controls">
+    <div class="group" data-cmd="scenario"><span class="label">scenario</span></div>
+    <div class="group" data-cmd="rule"><span class="label">rule</span></div>
+    <div class="group" data-cmd="block_ms"><span class="label">B</span></div>
+    <div class="group" data-cmd="speed"><span class="label">speed</span></div>
+    <div class="group" data-cmd="load"><span class="label">load</span></div>
+    <div class="group"><button id="skip" title="S">skip to the news</button><button id="restart" title="R">restart</button><span id="conn" class="conn">connecting</span></div>
+  </footer>
+
+  <script src="/app.js"></script>
+</body>
+</html>

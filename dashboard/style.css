@@ -1,0 +1,247 @@
+/* Stale Quotes dashboard. Tokens from rosalbito.dev (app/globals.css); the eclipse from the
+   journal's backdrop. Built for a projector: large type, high contrast, one accent. */
+
+@font-face {
+  font-family: "Geist";
+  src: url("/fonts/geist.woff2") format("woff2");
+  font-weight: 100 900;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Geist Mono";
+  src: url("/fonts/geist-mono.woff2") format("woff2");
+  font-weight: 100 900;
+  font-display: swap;
+}
+
+:root {
+  --bg: #050507;
+  --ink: #edebe6;
+  --ink-2: #b9b7be;
+  --ink-3: #a3a1a9;
+  --line: #2a2a32;
+  --line-strong: #3a3a43;
+  --accent: #7b61ff;
+  --accent-soft: rgba(123, 97, 255, 0.16);
+  --panel: rgba(123, 97, 255, 0.035);
+  --font-sans: "Geist", system-ui, sans-serif;
+  --font-mono: "Geist Mono", ui-monospace, monospace;
+  --gap: clamp(10px, 1.1vw, 22px);
+}
+
+* { box-sizing: border-box; }
+
+html {
+  background: var(--bg);
+  color-scheme: dark;
+  /* About 22px on a 1920-wide projector, never below 15px. */
+  font-size: clamp(15px, 0.95vw + 0.35vh, 28px);
+}
+
+body {
+  margin: 0;
+  height: 100vh;
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  gap: var(--gap);
+  padding: var(--gap);
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  line-height: 1.3;
+  -webkit-font-smoothing: antialiased;
+  overflow: hidden;
+}
+
+h1, h2, p, ol, ul, dl, dd { margin: 0; padding: 0; }
+ol, ul { list-style: none; }
+b { font-weight: 300; }
+
+.label {
+  font-family: var(--font-mono);
+  font-size: 0.62rem;
+  font-weight: 400;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+.note { letter-spacing: 0.12em; color: var(--ink-3); opacity: 0.8; margin-left: 0.8em; }
+
+/* ---------- header ---------- */
+
+.top { display: flex; align-items: flex-end; justify-content: space-between; gap: 2rem; }
+.brand h1 { font-size: 2.2rem; font-weight: 300; letter-spacing: -0.025em; line-height: 1; }
+.brand .label { margin-top: 0.35rem; display: block; }
+.status { display: flex; gap: 1.6rem; }
+.status div { display: flex; flex-direction: column; gap: 0.15rem; }
+.status dt { font-family: var(--font-mono); font-size: 0.6rem; letter-spacing: 0.2em; text-transform: uppercase; color: var(--ink-3); }
+.status dd { font-family: var(--font-mono); font-size: 1.05rem; color: var(--ink); white-space: nowrap; }
+.status .clock dd { font-size: 1.5rem; font-weight: 300; min-width: 9ch; }
+#st-rule { color: var(--accent); }
+
+/* ---------- grid ---------- */
+
+.grid {
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 21fr) minmax(0, 52fr) minmax(0, 27fr);
+  grid-template-rows: minmax(0, 58fr) minmax(0, 42fr);
+  grid-template-areas: "book price accounts" "book races engine";
+  gap: var(--gap);
+}
+.panel {
+  position: relative;
+  min-height: 0;
+  overflow: hidden;
+  padding: 0.85rem 1rem;
+  border: 1px solid var(--line);
+  border-radius: 2px;
+  background: var(--panel);
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+.panel > h2 { position: relative; z-index: 1; }
+.book { grid-area: book; }
+.price { grid-area: price; }
+.races { grid-area: races; }
+.accounts { grid-area: accounts; }
+.engine { grid-area: engine; }
+
+/* ---------- order book ---------- */
+
+.ladder { display: flex; flex-direction: column; gap: 2px; font-family: var(--font-mono); }
+.asks { flex: 1; justify-content: flex-end; }
+.bids { flex: 1; justify-content: flex-start; }
+.ladder li {
+  position: relative;
+  display: flex;
+  justify-content: space-between;
+  padding: 0.12rem 0.45rem;
+  font-size: 1.02rem;
+  line-height: 1.25;
+}
+.ladder li .bar {
+  position: absolute; inset: 0 auto 0 0; z-index: 0;
+  background: var(--line-strong);
+  border-radius: 2px;
+}
+.ladder.bids li .bar { background: #24242c; }
+.ladder li span { position: relative; z-index: 1; }
+.ladder .px { color: var(--ink); }
+.ladder .qty { color: var(--ink-2); }
+.ladder li.stale .bar { background: var(--accent-soft); box-shadow: inset 0 0 0 1px var(--accent); }
+.ladder li.stale .px { color: #d6cdff; }
+.ladder .side { font-size: 0.55rem; letter-spacing: 0.2em; color: var(--ink-3); text-transform: uppercase; padding: 0.1rem 0.45rem; }
+.spread {
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  color: var(--ink-2);
+  padding: 0.35rem 0.45rem;
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+}
+
+/* ---------- price ---------- */
+
+.price canvas { position: relative; z-index: 1; flex: 1; min-height: 0; width: 100%; }
+.price-figures, .race-totals, .engine-figures, .lat-row { position: relative; z-index: 1; display: flex; gap: 2rem; }
+.price-figures div, .race-totals div, .engine-figures div, .lat-row div { display: flex; flex-direction: column; }
+.price-figures b { font-size: 1.9rem; letter-spacing: -0.01em; font-variant-numeric: tabular-nums; }
+#px-gap.wide { color: #d6cdff; text-shadow: 0 0 18px rgba(123, 97, 255, 0.75); }
+.legend { margin-left: 1.2em; letter-spacing: 0.12em; }
+.legend i { display: inline-block; width: 1.6em; height: 0; vertical-align: middle; margin: 0 0.4em 0 1em; }
+.k-nasdaq { border-top: 3px solid var(--ink); }
+.k-mid { border-top: 2px dashed var(--ink-3); }
+.k-hidden { border-top: 3px solid #0c0c10; box-shadow: 0 0 0 1px rgba(214, 205, 255, 0.6), 0 0 8px 1px rgba(123, 97, 255, 0.8); }
+
+/* The eclipse: a dark disc with a violet rim, breathing, behind the chart. Faint by default;
+   brighter while Nasdaq is hidden. */
+.eclipse {
+  position: absolute; left: 62%; top: 54%; z-index: 0;
+  width: min(70%, 58vh); aspect-ratio: 1; transform: translate(-50%, -50%);
+  border-radius: 50%;
+  background: #030304;
+  box-shadow:
+    0 0 0 2px rgba(214, 205, 255, 0.75),
+    0 0 48px 10px rgba(123, 97, 255, 0.7),
+    0 0 220px 70px rgba(123, 97, 255, 0.26);
+  opacity: 0.16;
+  filter: blur(2px);
+  transition: opacity 1.2s ease;
+  animation: eclipse-breathe 14s ease-in-out infinite;
+  pointer-events: none;
+}
+.eclipse.hidden-px { opacity: 0.5; }
+@keyframes eclipse-breathe {
+  0%, 100% { box-shadow: 0 0 0 2px rgba(214, 205, 255, 0.75), 0 0 48px 10px rgba(123, 97, 255, 0.7), 0 0 220px 70px rgba(123, 97, 255, 0.26); }
+  50% { box-shadow: 0 0 0 2px rgba(214, 205, 255, 0.9), 0 0 64px 14px rgba(123, 97, 255, 0.85), 0 0 280px 90px rgba(123, 97, 255, 0.34); }
+}
+@media (prefers-reduced-motion: reduce) { .eclipse { animation: none; } }
+
+/* ---------- races ---------- */
+
+.race-totals b { font-size: 1.7rem; font-variant-numeric: tabular-nums; }
+#r-sniper { color: #d6cdff; }
+.feed { width: 100%; border-collapse: collapse; font-family: var(--font-mono); font-size: 0.86rem; }
+.feed th { text-align: left; font-weight: 400; font-size: 0.56rem; letter-spacing: 0.2em; text-transform: uppercase; color: var(--ink-3); padding: 0 0.5rem 0.3rem 0; border-bottom: 1px solid var(--line); }
+.feed td { padding: 0.18rem 0.5rem 0.18rem 0; color: var(--ink-2); white-space: nowrap; border-bottom: 1px solid rgba(42, 42, 50, 0.6); }
+.feed td.w-sniper { color: #d6cdff; }
+.feed td.w-lp { color: var(--ink); }
+.feed td.w-trader { color: var(--ink-3); }
+.feed tr.flash td { animation: flash 1.4s ease-out 1; }
+@keyframes flash {
+  0% { background: rgba(123, 97, 255, 0.55); color: #fff; }
+  100% { background: transparent; }
+}
+
+/* ---------- accounts ---------- */
+
+.pnl { display: flex; flex-direction: column; gap: 0.55rem; flex: 1; justify-content: center; }
+.pnl li { display: grid; grid-template-columns: 6.2em 1fr 6.8em; align-items: center; gap: 0.7rem; }
+.pnl .who { font-family: var(--font-mono); font-size: 0.66rem; letter-spacing: 0.16em; text-transform: uppercase; color: var(--ink-2); }
+.pnl .track { position: relative; height: 1.15rem; border-left: 0; }
+.pnl .track::before { content: ""; position: absolute; left: 50%; top: -0.25rem; bottom: -0.25rem; border-left: 1px solid var(--line-strong); }
+.pnl .fill { position: absolute; top: 0; bottom: 0; border-radius: 2px; background: var(--ink); }
+.pnl .fill.neg { background: var(--line-strong); box-shadow: inset 0 0 0 1px var(--ink-3); }
+.pnl li.sniper .fill:not(.neg) { background: var(--accent); }
+.pnl .val { font-family: var(--font-mono); font-size: 1rem; text-align: right; font-variant-numeric: tabular-nums; }
+.zero { display: flex; justify-content: space-between; align-items: baseline; border-top: 1px solid var(--line); padding-top: 0.4rem; }
+.zero b { font-family: var(--font-mono); font-size: 0.95rem; color: var(--ink-2); }
+
+/* ---------- engine ---------- */
+
+.engine-figures b, .lat-row b { font-size: 1.45rem; font-variant-numeric: tabular-nums; }
+.latency { display: flex; flex-direction: column; gap: 0.25rem; }
+.rings { display: grid; grid-template-columns: 1fr 1fr; gap: 0.35rem 1rem; }
+.rings li { display: flex; flex-direction: column; gap: 0.18rem; }
+.rings .meter { height: 0.42rem; background: #121218; border: 1px solid var(--line); border-radius: 2px; position: relative; overflow: hidden; }
+.rings .meter i { position: absolute; inset: 0 auto 0 0; background: var(--ink-2); }
+.rings .meter u { position: absolute; top: 0; bottom: 0; width: 2px; background: var(--accent); }
+.rings .label b { font-family: var(--font-mono); font-weight: 400; color: var(--ink-2); letter-spacing: 0.04em; text-transform: none; }
+.checks { display: flex; gap: 1.2rem; font-family: var(--font-mono); font-size: 0.72rem; color: var(--ink-2); flex-wrap: wrap; }
+.checks .ok::before { content: "\25CF  "; color: var(--accent); }
+.checks .bad { color: #fff; background: #5a1f2a; padding: 0 0.3em; }
+
+/* ---------- controls ---------- */
+
+.controls { display: flex; gap: 1.6rem; align-items: center; flex-wrap: wrap; }
+.group { display: flex; align-items: center; gap: 0.35rem; }
+.group > .label { margin-right: 0.3rem; }
+button {
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-2);
+  background: rgba(5, 5, 7, 0.7);
+  border: 1px solid var(--line-strong);
+  border-radius: 2px;
+  padding: 0.42rem 0.62rem;
+  cursor: pointer;
+}
+button:hover { color: var(--ink); border-color: var(--ink-3); }
+button.on { color: var(--ink); border-color: var(--accent); background: var(--accent-soft); }
+:focus-visible { outline: 2px solid var(--ink); outline-offset: 3px; border-radius: 2px; }
+.conn { font-family: var(--font-mono); font-size: 0.6rem; letter-spacing: 0.2em; text-transform: uppercase; color: var(--ink-3); margin-left: 0.8rem; }
+.conn.down { color: #fff; background: #5a1f2a; padding: 0.1rem 0.4rem; }
