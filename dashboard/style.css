@@ -211,15 +211,16 @@ b { font-weight: 300; }
 
 /* ---------- engine ---------- */
 
-.engine-figures b, .lat-row b { font-size: 1.45rem; font-variant-numeric: tabular-nums; }
+.engine-figures b, .lat-row b { font-size: 1.3rem; font-variant-numeric: tabular-nums; }
+.engine { gap: 0.45rem; }
 .latency { display: flex; flex-direction: column; gap: 0.25rem; }
-.rings { display: grid; grid-template-columns: 1fr 1fr; gap: 0.35rem 1rem; }
+.rings { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.35rem 0.8rem; }
 .rings li { display: flex; flex-direction: column; gap: 0.18rem; }
 .rings .meter { height: 0.42rem; background: #121218; border: 1px solid var(--line); border-radius: 2px; position: relative; overflow: hidden; }
 .rings .meter i { position: absolute; inset: 0 auto 0 0; background: var(--ink-2); }
 .rings .meter u { position: absolute; top: 0; bottom: 0; width: 2px; background: var(--accent); }
 .rings .label b { font-family: var(--font-mono); font-weight: 400; color: var(--ink-2); letter-spacing: 0.04em; text-transform: none; }
-.checks { display: flex; gap: 1.2rem; font-family: var(--font-mono); font-size: 0.72rem; color: var(--ink-2); flex-wrap: wrap; }
+.checks { display: flex; flex-direction: column; gap: 0.2rem; font-family: var(--font-mono); font-size: 0.68rem; color: var(--ink-2); }
 .checks .ok::before { content: "\25CF  "; color: var(--accent); }
 .checks .bad { color: #fff; background: #5a1f2a; padding: 0 0.3em; }
 

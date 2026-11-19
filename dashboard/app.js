@@ -141,9 +141,9 @@ function clock(t, run) {
 }
 const pad = (n) => String(n).padStart(2, "0");
 
-function usd(v, digits = 2) {
+function usd(v, digits = 2, signed = true) {
   const a = Math.abs(v);
-  const sign = v < -0.0005 ? "−" : v > 0.0005 ? "+" : "";
+  const sign = v < -0.0005 ? "−" : v > 0.0005 && signed ? "+" : "";
   if (a >= 1e6) return `${sign}$${(a / 1e6).toFixed(2)}M`;
   if (a >= 1e4) return `${sign}$${(a / 1e3).toFixed(1)}k`;
   return `${sign}$${a.toFixed(digits)}`;
@@ -211,7 +211,7 @@ function renderPrice(s) {
   $("px-nasdaq").textContent = p.nasdaq.toFixed(2);
   $("px-mid").textContent = p.mid == null ? "–" : p.mid.toFixed(3);
   const gap = p.mid == null ? null : p.nasdaq - p.mid;
-  $("px-gap").textContent = gap == null ? "–" : `${gap >= 0 ? "+" : "−"}${Math.abs(gap * 100).toFixed(1)}¢`;
+  $("px-gap").textContent = gap == null ? "–" : Math.abs(gap) >= 1 ? usd(gap) : `${gap >= 0 ? "+" : "−"}${Math.abs(gap * 100).toFixed(1)}¢`;
   $("px-gap").classList.toggle("wide", gap != null && Math.abs(gap) >= 0.015);
   $("eclipse").classList.toggle("hidden-px", s.run.hidden);
   drawChart(s);
@@ -232,7 +232,7 @@ function renderRaces(s) {
     const flash = x.winner === "sniper" && !seenSniperWins.has(key);
     if (x.winner === "sniper") seenSniperWins.add(key);
     return `<tr class="${flash ? "flash" : ""}"><td>${clock(x.t, s.run)}</td><td class="w-${x.winner}">${x.winner}</td>` +
-      `<td>${usd(x.stake_usd)}</td><td>${x.ms.toFixed(1)} ms</td><td>${x.rule.replace("_priority", " first")}</td></tr>`;
+      `<td>${usd(x.stake_usd, 2, false)}</td><td>${x.ms.toFixed(1)} ms</td><td>${x.rule.replace("_priority", " first")}</td></tr>`;
   });
   $("feed").innerHTML = rows.join("") || `<tr><td colspan="5">no race has ended yet</td></tr>`;
 }
@@ -262,9 +262,10 @@ function renderEngine(s) {
   $("e-p50").textContent = ns(e.latency_ns.p50);
   $("e-p99").textContent = ns(e.latency_ns.p99);
   $("e-p999").textContent = ns(e.latency_ns.p999);
+  $("e-lat-n").textContent = e.latency_ns.window ? `n = ${e.latency_ns.window.toLocaleString("en-US")}` : "";
   $("rings").innerHTML = e.rings.map((r) => {
     const used = (100 * r.used) / r.cap, peak = (100 * r.peak) / r.cap;
-    return `<li><span class="label">${r.name} <b>${r.peak}/${r.cap}</b></span>` +
+    return `<li><span class="label">${r.name} <b>${r.peak}</b></span>` +
       `<span class="meter"><i style="width:${Math.max(used, 0.5)}%"></i><u style="left:${Math.min(peak, 99.5)}%"></u></span></li>`;
   }).join("");
   const sb = e.standby;
@@ -277,7 +278,7 @@ function renderEngine(s) {
     rp.textContent = `logging run ${lg.run}: ${lg.records.toLocaleString("en-US")} records`;
     rp.className = "";
   } else if (lg.replay.ok) {
-    rp.textContent = `run ${lg.last_run} log replays exactly · fills ${lg.replay.fills_hash}`;
+    rp.textContent = `run ${lg.last_run} log replays exactly · ${lg.replay.fills_hash.slice(0, 8)}`;
     rp.className = "ok";
   } else {
     rp.textContent = `run ${lg.last_run} REPLAY FAILED`;
@@ -351,13 +352,15 @@ function drawChart(s) {
   // Time labels.
   ctx.textBaseline = "alphabetic";
   const tStep = niceStep(v1 - v0, 5);
+  ctx.fillStyle = C.ink3;
   for (let t = Math.ceil(v0 / tStep) * tStep; t <= v1; t += tStep) {
-    ctx.fillStyle = C.ink3;
     const label = run.weekend ? clock(t, run).slice(0, 9) : clock(t, run).replace(/\.\d+$/, "");
-    ctx.fillText(label, x(t) - fs, H - fs * 0.35);
+    const w = ctx.measureText(label).width;
+    const lx = Math.max(padL, Math.min(x(t) - w / 2, W - padR - w));
+    ctx.fillText(label, lx, H - fs * 0.35);
   }
 
-  const hidden = (t) => run.weekend && t >= run.weekend[0] && t < run.weekend[1];
+  const hidden = (t) => !!run.weekend && t >= run.weekend[0] && t < run.weekend[1];
 
   // Book mid: dashed.
   ctx.setLineDash([fs * 0.4, fs * 0.3]);
@@ -366,6 +369,7 @@ function drawChart(s) {
   ctx.beginPath();
   let on = false;
   for (const p of pts) {
+    if (p.length < 4) continue; // a path sample: no book mid, bridge over it
     if (p[3] == null) { on = false; continue; }
     if (!on) { ctx.moveTo(x(p[0]), y(p[3])); on = true; } else ctx.lineTo(x(p[0]), y(p[3]));
   }
@@ -414,7 +418,12 @@ function drawChart(s) {
       ctx.fillStyle = "#d6cdff";
       ctx.font = `400 ${fs * 0.7}px ${MONO}`;
       const text = `REOPEN ${gap >= 0 ? "+" : "−"}$${Math.abs(gap).toFixed(2)}`;
-      ctx.fillText(text, Math.min(xr + fs * 0.4, W - padR - ctx.measureText(text).width), padT + fs * 2.2);
+      const tw = ctx.measureText(text).width;
+      const tx = Math.min(xr + fs * 0.4, W - padR - tw - fs * 0.3), ty = padT + fs * 2.2;
+      ctx.fillStyle = "rgba(5, 5, 7, 0.85)";
+      ctx.fillRect(tx - fs * 0.25, ty - fs * 0.75, tw + fs * 0.5, fs * 1.05);
+      ctx.fillStyle = "#d6cdff";
+      ctx.fillText(text, tx, ty);
     }
   }
 
