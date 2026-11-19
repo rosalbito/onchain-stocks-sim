@@ -249,7 +249,16 @@ async fn stress_run_goes_to_disk_takes_a_rate_change_and_replays() {
             && v["sys"]["log"]["records"].as_u64() > Some(0)
     })
     .await;
+    // The old log goes (on a background thread); the new run's log stays.
+    let t = Instant::now();
+    while journal.exists() && t.elapsed() < Duration::from_secs(5) {
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
     assert!(!journal.exists());
+    let v = until(&mut ws, 5, "the second log", |v| v["run"]["id"] == 2).await;
+    let second = PathBuf::from(v["sys"]["log"]["path"].as_str().unwrap());
+    assert_ne!(second, journal);
+    assert!(second.exists(), "{}", second.display());
 
     drop(ws);
     srv.shutdown().await;

@@ -138,8 +138,15 @@ pub fn spawn_log_writer(
                 match msg {
                     LogMsg::Start(info) => {
                         if info.stress {
-                            // Keep only the latest stress log: they are large.
-                            remove_old_stress_logs(&dir);
+                            // Keep only the latest stress log: they are large. List the old
+                            // ones now, before this run's journal exists; deleting a gigabyte
+                            // takes a while, so do that on another thread.
+                            let old = old_stress_logs(&dir);
+                            checks.push(thread::spawn(move || {
+                                for p in old {
+                                    let _ = std::fs::remove_file(p);
+                                }
+                            }));
                         }
                         let path = dir.join(format!(
                             "{}-seed{}-{}-run{}.journal",
@@ -265,16 +272,19 @@ pub fn spawn_log_writer(
         .expect("spawn log writer")
 }
 
-fn remove_old_stress_logs(dir: &Path) {
+/// Stress journals already in `dir`.
+fn old_stress_logs(dir: &Path) -> Vec<PathBuf> {
     let Ok(entries) = std::fs::read_dir(dir) else {
-        return;
+        return Vec::new();
     };
-    for e in entries.flatten() {
-        let name = e.file_name().to_string_lossy().to_string();
-        if name.starts_with("stress-") && name.ends_with(".journal") {
-            let _ = std::fs::remove_file(e.path());
-        }
-    }
+    entries
+        .flatten()
+        .filter(|e| {
+            let name = e.file_name().to_string_lossy().to_string();
+            name.starts_with("stress-") && name.ends_with(".journal")
+        })
+        .map(|e| e.path())
+        .collect()
 }
 
 /// A market run: convert the journal to the batch log, re-simulate it, and replay it.

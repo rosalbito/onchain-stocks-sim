@@ -47,7 +47,7 @@ struct Args {
     #[arg(long, default_value = "out")]
     out: PathBuf,
     /// A run stops when its log reaches this many MB (stress logs grow fast).
-    #[arg(long, default_value_t = 1024)]
+    #[arg(long, default_value_t = 2000)]
     log_cap_mb: u64,
     /// Don't open the dashboard in a browser.
     #[arg(long)]
