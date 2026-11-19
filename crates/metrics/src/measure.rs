@@ -94,10 +94,10 @@ pub struct MeasureInput<'a> {
     pub monday_window_ns: u64,
 }
 
-/// When a record was processed (matched): ticks and B = 0 messages at their arrival, block
-/// messages when their block closed.
+/// When a record was processed (matched): ticks, config changes and B = 0 messages at their
+/// arrival, block messages when their block closed.
 pub fn processed_ns(rec: &LogRecord, block_ns: u64) -> u64 {
-    if block_ns == 0 || matches!(rec.kind, MsgKind::Tick { .. }) {
+    if block_ns == 0 || matches!(rec.kind, MsgKind::Tick { .. } | MsgKind::Config { .. }) {
         rec.t_ns
     } else {
         (rec.block + 1) * block_ns

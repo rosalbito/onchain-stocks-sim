@@ -1,0 +1,165 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Stale Quotes</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <!-- Setup: everything that configures a run, then Start. -->
+  <section id="setup" class="setup" aria-label="Setup">
+    <div class="eclipse setup-eclipse" aria-hidden="true"></div>
+    <div class="setup-card">
+      <div class="row" data-field="mode">
+        <span class="label">mode</span>
+        <div class="choices">
+          <button data-value="market">market<small>the simulation: agents, sequencer, ordering rule</small></button>
+          <button data-value="stress">stress<small>synthetic flow through the real path, as fast as asked</small></button>
+        </div>
+      </div>
+      <div class="row market-only" data-field="scenario"><span class="label">scenario</span><div class="choices"></div></div>
+      <div class="row market-only" data-field="rule"><span class="label">ordering rule</span><div class="choices"></div></div>
+      <div class="row market-only" data-field="block_ms"><span class="label">block B</span><div class="choices"></div></div>
+      <div class="row market-only" data-field="speed"><span class="label">speed</span><div class="choices"></div></div>
+      <div class="row stress-only" data-field="rate"><span class="label">target rate</span><div class="choices"></div></div>
+      <div class="row">
+        <span class="label">seed</span>
+        <div class="choices"><input id="seed" type="number" min="0" step="1" value="1" aria-label="seed"></div>
+      </div>
+      <div class="row start-row">
+        <button id="start" class="start">start <kbd>enter</kbd></button>
+        <span id="last-check" class="last-check"></span>
+      </div>
+    </div>
+  </section>
+
+  <!-- A run: three pages. -->
+  <section id="run" class="run" hidden>
+    <header class="bar">
+      <nav class="tabs" aria-label="Pages">
+        <button data-page="system"><kbd>1</kbd>system</button>
+        <button data-page="market"><kbd>2</kbd>market</button>
+        <button data-page="profits"><kbd>3</kbd>profits</button>
+      </nav>
+      <div id="summary" class="summary"></div>
+      <div class="right"><span id="clock" class="clock"></span><button id="restart-btn" title="restart the same run (r)">restart</button><button id="setup-btn" title="stop and go back to setup (Esc)">setup</button><button id="help-btn" class="help-btn" aria-label="keyboard shortcuts">?</button></div>
+    </header>
+
+    <main id="page-system" class="page system">
+      <div class="card" id="c-throughput">
+        <h2 class="label">messages / s</h2>
+        <div class="big"><b id="s-rate">–</b><span id="s-peak" class="sub"></span></div>
+        <canvas class="spark"></canvas>
+        <p id="s-rate-note" class="note"></p>
+      </div>
+      <div class="card" id="c-latency">
+        <h2 class="label" id="s-lat-kind">latency</h2>
+        <div class="big pair"><span><b id="s-lat50">–</b><i>p50</i></span><span><b id="s-lat99">–</b><i>p99</i></span></div>
+        <canvas class="spark"></canvas>
+        <p id="s-lat-note" class="note"></p>
+      </div>
+      <div class="card" id="c-block">
+        <h2 class="label" id="s-blk-kind">block</h2>
+        <div class="big pair"><span><b id="s-blk50">–</b><i>p50</i></span><span><b id="s-blk99">–</b><i>p99</i></span></div>
+        <canvas class="spark"></canvas>
+        <p id="s-blk-note" class="note"></p>
+      </div>
+      <div class="card" id="c-cpu">
+        <h2 class="label">cpu</h2>
+        <div class="big"><b id="s-cpu">–</b><span class="sub">process, of 800%</span></div>
+        <canvas class="spark"></canvas>
+        <ul id="s-threads" class="bars"></ul>
+      </div>
+      <div class="card" id="c-mem">
+        <h2 class="label">memory</h2>
+        <div class="big"><b id="s-rss">–</b><span class="sub">resident</span></div>
+        <canvas class="spark"></canvas>
+        <p id="s-mem-note" class="note"></p>
+      </div>
+      <div class="card" id="c-log">
+        <h2 class="label">input log on disk</h2>
+        <div class="big pair"><span><b id="s-log">–</b></span><span><b id="s-logw">–</b><i>write</i></span></div>
+        <p id="s-log-cap" class="note"></p>
+        <canvas class="spark"></canvas>
+        <p id="s-check" class="note"></p>
+      </div>
+      <div class="card" id="c-rings">
+        <h2 class="label">rings · fill and backpressure</h2>
+        <ul id="s-rings" class="bars rings"></ul>
+        <p id="s-ring-note" class="note"></p>
+      </div>
+      <div class="card" id="c-ws">
+        <h2 class="label">websocket</h2>
+        <div class="big"><b id="s-ws">–</b><span class="sub">frames / s</span></div>
+        <canvas class="spark"></canvas>
+        <p id="s-sync" class="note"></p>
+      </div>
+    </main>
+
+    <main id="page-market" class="page market" hidden>
+      <div class="card stress-note" hidden>
+        <h2 class="label">stress flow</h2>
+        <p>The flow is synthetic: limit orders around a drifting mid, cancels and marketable IOCs from 64 accounts, at the target rate. There is no Nasdaq price and no races here; the book on the right is the engine's live book.</p>
+      </div>
+      <div class="card chart-card">
+        <div class="eclipse" id="eclipse" aria-hidden="true"></div>
+        <div class="figures">
+          <span><i>nasdaq</i><b id="m-nasdaq">–</b></span>
+          <span><i>book mid</i><b id="m-mid">–</b></span>
+          <span><i>gap</i><b id="m-gap">–</b></span>
+          <span class="legend"><em class="k-nasdaq"></em>nasdaq <em class="k-mid"></em>book mid <em class="k-hidden"></em>hidden</span>
+        </div>
+        <canvas id="chart"></canvas>
+      </div>
+      <div class="card book-card">
+        <h2 class="label">book <span id="m-levels" class="dim"></span></h2>
+        <ol id="asks" class="ladder asks"></ol>
+        <div id="spread" class="spread"></div>
+        <ol id="bids" class="ladder bids"></ol>
+      </div>
+      <div class="card races-card">
+        <h2 class="label">races <span id="m-races" class="dim"></span></h2>
+        <table class="feed"><tbody id="feed"></tbody></table>
+      </div>
+    </main>
+
+    <main id="page-profits" class="page profits" hidden>
+      <div class="card story">
+        <h2 class="label">who gained, who lost</h2>
+        <ul id="p-story" class="story-lines"></ul>
+        <p class="note">Transfers are valued at the Nasdaq price at the moment of each fill. The table also marks what each class holds to the price now, so it moves with the price; every row sums to zero.</p>
+      </div>
+      <div class="card ledger">
+        <table class="classes">
+          <thead><tr><th></th><th>who they are</th><th>gain at fill</th><th>fees paid</th><th>pnl now</th></tr></thead>
+          <tbody id="p-classes"></tbody>
+          <tfoot><tr><td>sum</td><td></td><td id="p-sum-fill"></td><td></td><td id="p-sum"></td></tr></tfoot>
+        </table>
+      </div>
+    </main>
+  </section>
+
+  <div id="help" class="help" hidden>
+    <div class="help-card">
+      <h2 class="label">keys</h2>
+      <dl>
+        <dt>1 2 3</dt><dd>system · market · profits</dd>
+        <dt>f p c</dt><dd>rule: first come first served · priority gas auction · cancel priority</dd>
+        <dt>b</dt><dd>next block length B</dd>
+        <dt>[ ]</dt><dd>slower / faster (stress: lower / higher rate)</dd>
+        <dt>space</dt><dd>pause / resume</dd>
+        <dt>l</dt><dd>next load: ×1 ×10 ×100</dd>
+        <dt>s</dt><dd>skip to just before the news, the close or the reopen</dd>
+        <dt>r</dt><dd>restart the same run</dd>
+        <dt>esc</dt><dd>stop and go back to setup</dd>
+        <dt>?</dt><dd>this list</dd>
+      </dl>
+      <p class="note">Every live change is written to the input log, so the run still replays exactly.</p>
+    </div>
+  </div>
+
+  <div id="toast" class="toast" hidden></div>
+  <script src="/app.js"></script>
+</body>
+</html>

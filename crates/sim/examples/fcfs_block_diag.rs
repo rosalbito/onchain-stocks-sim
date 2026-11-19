@@ -52,7 +52,7 @@ fn main() {
                             acc[0] += 1;
                         }
                     }
-                    MsgKind::Cancel { .. } => {}
+                    MsgKind::Cancel { .. } | MsgKind::Config { .. } => {}
                 }
                 for ev in e.on_message(rec) {
                     if let EventKind::Fill {

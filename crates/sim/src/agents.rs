@@ -102,6 +102,12 @@ impl Lp {
         self.inventory
     }
 
+    /// A live switch of the ordering rule. The rule is a public protocol parameter, so the LP
+    /// learns it at once, like the calendar close.
+    pub fn set_pga(&mut self, pga: bool) {
+        self.pga = pga;
+    }
+
     pub fn observe(&mut self, obs: &Obs) -> Vec<MsgKind> {
         let mut out = Vec::new();
         match obs {
@@ -397,6 +403,11 @@ impl Sniper {
             bids: BTreeMap::new(),
             asks: BTreeMap::new(),
         }
+    }
+
+    /// A live switch of the ordering rule, learned at once (see [`Lp::set_pga`]).
+    pub fn set_pga(&mut self, pga: bool) {
+        self.pga = pga;
     }
 
     fn fee(&self, prize_tick_lots: i128) -> u64 {

@@ -49,6 +49,10 @@ pub enum MsgKind {
     },
     /// A Nasdaq price update. Ignored by matching, echoed as an event.
     Tick { px_ticks: Px },
+    /// A live control change (ordering rule, block length, load, playback speed), logged so a
+    /// run with live changes replays exactly (spec section 12). Opaque to the engine: it takes a
+    /// `seq` like any record and produces no events. The harness gives `param` its meaning.
+    Config { param: u32, value: u64 },
 }
 
 impl MsgKind {
@@ -61,7 +65,7 @@ impl MsgKind {
             MsgKind::New { priority_fee, .. } | MsgKind::Cancel { priority_fee, .. } => {
                 *priority_fee
             }
-            MsgKind::Tick { .. } => 0,
+            MsgKind::Tick { .. } | MsgKind::Config { .. } => 0,
         }
     }
 }

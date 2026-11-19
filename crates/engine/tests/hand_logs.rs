@@ -420,3 +420,17 @@ fn h22_lp_two_level_quote_hit_by_stale_snipe() {
     assert_eq!(e.depth(Side::Buy), vec![(9_999, 10), (9_998, 5)]);
     insta::assert_debug_snapshot!(ev);
 }
+
+#[test]
+fn h23_config_record_takes_a_seq_and_changes_nothing() {
+    // A logged control change between two orders: no events, the book is untouched, and the
+    // next order still sees seq order (its id is its own seq, 3).
+    let (e, ev) = run(&[
+        (LP, gtc(Side::Sell, 10_001, 5)),
+        (0, MsgKind::Config { param: 1, value: 2 }),
+        (TRADER, ioc(Side::Buy, 10_001, 2)),
+    ]);
+    assert!(ev.iter().all(|x| x.seq != 2));
+    assert_eq!(fills(&ev), vec![(1, 3, 10_001, 2)]);
+    assert_eq!(e.best_ask(), Some((10_001, 3)));
+}
