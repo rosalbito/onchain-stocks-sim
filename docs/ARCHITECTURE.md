@@ -296,7 +296,9 @@ Everything runs in one Rust process. Message brokers solve a problem we don't ha
 | Micro-benchmarks | `criterion` | — |
 | Profiling | `perf`, `cargo flamegraph` | — |
 
-**Crate layout:** `engine` (no dependencies, pure) · `sim` (event loop, agents, simulated sequencer) · `metrics` · `bench` · `viz` (replay UI for the demo). Only `bench` and `viz` use threads or tokio.
+**Crate layout:** `engine` (no dependencies, pure) · `sim` (event loop, agents, simulated sequencer) · `metrics` · `grid` (the section 13 experiment grid) · `bench` · `viz` (replay UI for the demo). Only `bench` and `viz` use threads or tokio; `grid` uses rayon across runs, never inside one.
+
+**The grid crate** is the report layer (DECISIONS 51): it runs single-threaded, deterministic runs in parallel, converts the integer metrics to bps, dollars and shares, bootstraps the 95% intervals and writes parquet (`grid_runs`, `grid_summary`, `grid_pairs`) for `analysis/`. Under PGA the bids are grid levels: `--alpha-bps` (sniper bid, bps of the prize it sees), `--beta-bps` (LP cancel bid, bps of exposure) and `--alpha-split` (α is the snipers' combined bid, so each of N bids α / N). Every (α, β) pair is its own PGA arm; FCFS and cancel priority never bid and run once. Filters (`--regimes`, `--rules`, `--blocks-ms`, `--gaps`, `--snipers`) run a subset, which is how the bidding sweep in `analysis/data/pga_sweep` was made (`analysis/pga_sweep.py` tabulates it).
 
 **Where Rust sits next to HFT stacks.** Top HFT firms run a different race from ours. They don't drop the operating system; they keep Linux but keep it out of the hot path. Rough orders of magnitude (general knowledge, not source-checked here):
 
