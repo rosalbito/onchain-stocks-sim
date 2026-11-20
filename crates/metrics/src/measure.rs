@@ -13,7 +13,9 @@
 
 use std::collections::BTreeMap;
 
-use engine::{AgentId, Engine, EventKind, LogRecord, MsgKind, OrderId, Px, Qty, Side};
+use engine::{
+    AgentId, Engine, EventKind, LogRecord, MsgKind, OrderId, Px, Qty, RestingOrder, Side,
+};
 
 use crate::{AccountClass, RaceStats, RaceTracker, CASH_PER_TICK_LOT};
 
@@ -243,54 +245,6 @@ impl MondayOpen {
     }
 }
 
-/// The LP's resting GTC quotes, by id, as the replay sees them.
-#[derive(Default)]
-struct LpQuotes {
-    live: BTreeMap<OrderId, (Side, Px, Qty)>,
-}
-
-impl LpQuotes {
-    fn on_event(&mut self, ev: &EventKind, is_lp: bool) {
-        match *ev {
-            EventKind::Accepted {
-                order_id,
-                side,
-                px,
-                qty,
-                tif: engine::Tif::Gtc,
-                ..
-            } if is_lp => {
-                self.live.insert(order_id, (side, px, qty));
-            }
-            EventKind::Fill {
-                maker_order,
-                taker_order,
-                qty,
-                maker_remaining,
-                ..
-            } => {
-                if let Some(q) = self.live.get_mut(&maker_order) {
-                    q.2 = maker_remaining;
-                    if maker_remaining == 0 {
-                        self.live.remove(&maker_order);
-                    }
-                }
-                // A GTC that crossed on entry: its taker fills reduce what rests.
-                if let Some(q) = self.live.get_mut(&taker_order) {
-                    q.2 -= qty;
-                    if q.2 == 0 {
-                        self.live.remove(&taker_order);
-                    }
-                }
-            }
-            EventKind::Cancelled { order_id, .. } => {
-                self.live.remove(&order_id);
-            }
-            _ => {}
-        }
-    }
-}
-
 /// The prize quotes while the window is open: id → (staleness at the reopen, lots still resting).
 struct GapRace {
     open: BTreeMap<OrderId, (i64, Qty)>,
@@ -300,14 +254,19 @@ struct GapRace {
 }
 
 impl GapRace {
-    /// The LP quotes the reopen price `v` leaves stale by at least θ.
-    fn at_reopen(lp: &LpQuotes, v: Px, theta: i64) -> Self {
+    /// The LP quotes the reopen price `v` leaves stale by at least θ. `lp_quotes` is what the
+    /// replay engine has resting for the LP just before the reopen tick: the engine's book is
+    /// the one record of what rests, so this reads it rather than tracking a copy.
+    fn at_reopen(lp_quotes: impl Iterator<Item = RestingOrder>, v: Px, theta: i64) -> Self {
         let mut g = GapRace {
             open: BTreeMap::new(),
             ids: std::collections::BTreeSet::new(),
             m: MondayOpen::default(),
         };
-        for (&id, &(side, px, qty)) in &lp.live {
+        for RestingOrder {
+            id, side, px, qty, ..
+        } in lp_quotes
+        {
             let stale = match side {
                 Side::Sell => v - px,
                 Side::Buy => px - v,
@@ -550,7 +509,6 @@ pub fn measure(inp: &MeasureInput) -> Metrics {
     // The gap race: the LP quotes resting at the reopen, and each sniper's first decision after
     // the reopen. A sniper acts only on prices it sees and no price is visible over the
     // weekend, so that decision is its reaction to the reopen tick.
-    let mut lp_quotes = LpQuotes::default();
     let mut gap: Option<GapRace> = None;
     let mut first_reaction: BTreeMap<AgentId, u64> = BTreeMap::new();
     if let Some(w) = inp.weekend {
@@ -580,7 +538,11 @@ pub fn measure(inp: &MeasureInput) -> Metrics {
                     reopen_px = Some(px_ticks);
                     let lots = |m: &BTreeMap<Px, Qty>| m.values().sum::<u64>();
                     at_reopen = Some((lots(&book.bids), lots(&book.asks)));
-                    gap = Some(GapRace::at_reopen(&lp_quotes, px_ticks, inp.theta_ticks));
+                    let lp_quotes = engine
+                        .resting_orders()
+                        .into_iter()
+                        .filter(|o| class_is(o.agent, AccountClass::Lp));
+                    gap = Some(GapRace::at_reopen(lp_quotes, px_ticks, inp.theta_ticks));
                 }
             }
         }
@@ -627,9 +589,6 @@ pub fn measure(inp: &MeasureInput) -> Metrics {
         races.on_record(rec, &events);
         let mut taker_filled = false;
         for ev in &events {
-            let is_lp = matches!(ev.kind, EventKind::Accepted { agent, .. }
-                if class_is(agent, AccountClass::Lp));
-            lp_quotes.on_event(&ev.kind, is_lp);
             if let (Some(g), true) = (gap.as_mut(), in_window(t)) {
                 g.on_event(&ev.kind, &class, inp.taker_fee_bps);
             }
