@@ -89,7 +89,7 @@ The decisions that shape the system, one short record each: the context, what we
 **Rejected.**
 - Channels: their reader goes to sleep and the OS must wake it, which adds microseconds and millisecond tails on a busy machine.
 - A mutex: fast in the typical case, but a descheduled lock holder stalls everyone.
-- A direct call: fastest alone, but then the engine thread would also encode and write the log and run the standby's second match on every message. Flat out those use 70–100% of a core each.
+- A direct call: fastest alone, but then one thread would do all three jobs in a row. At 5.5M msgs/s the engine thread spends ~180 ns a message, and the log writer and the standby keep their own cores 70–100% busy (~150 and ~170 ns a message). In a row that is ~500 ns, or about 2M msgs/s instead of 5.5M. This is arithmetic from measured CPU use, not a separate run. A ring moves ~320 ns of work off the engine's core for ~40 ns.
 
 **Costs.**
 - **Memory up front:** a ring is allocated at full size. Ours total about 15 MB (log 5.8, standby 5.2, input 3.7, UI 0.7), roughly half the process.
