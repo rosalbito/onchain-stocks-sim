@@ -15,4 +15,5 @@ mod sim;
 pub use config::{OrderingRule, Scenario};
 pub use sim::{
     config_records, replay, replay_check, run, run_with, Control, Counts, Live, RunOpts, RunResult,
+    Trade,
 };

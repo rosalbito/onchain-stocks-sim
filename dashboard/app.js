@@ -6,7 +6,7 @@
 const $ = (id) => document.getElementById(id);
 const CSS = getComputedStyle(document.documentElement);
 const tok = (n) => CSS.getPropertyValue(n).trim();
-const C = { ink: tok("--ink"), ink2: tok("--ink-2"), ink3: tok("--ink-3"), line: tok("--line"), lineStrong: tok("--line-strong"), accent: tok("--accent"), accentInk: tok("--accent-ink") };
+const C = { bg: tok("--bg"), ink: tok("--ink"), ink2: tok("--ink-2"), ink3: tok("--ink-3"), line: tok("--line"), lineStrong: tok("--line-strong"), accent: tok("--accent"), accentInk: tok("--accent-ink") };
 const MONO = '"Geist Mono", ui-monospace, monospace';
 
 const OPTIONS = {
@@ -16,6 +16,7 @@ const OPTIONS = {
   block_ms: [[0, "0 · continuous"], [50, "50 ms"], [250, "250 ms"], [1000, "1 s"]],
   speed: [[0.01, "1/100×"], [0.1, "1/10×"], [1, "1×"], [10, "10×"], [100, "100×"], [1000, "1k×"], [10000, "10k×"]],
   rate: [[10000, "10k / s"], [100000, "100k / s"], [1000000, "1M / s"], [0, "max"]],
+  crowd: [[true, "crowd · 24 LPs, 60 traders"], [false, "talk model · 1 LP, 1 trader"]],
 };
 const RULE_NAMES = Object.fromEntries(OPTIONS.rule);
 const SPEEDS = OPTIONS.speed.map((o) => o[0]);
@@ -65,8 +66,8 @@ function toast(text) {
 const pad = (n) => String(Math.floor(n)).padStart(2, "0");
 function vclock(t, weekend) {
   if (weekend) {
-    // t = 0 is Friday 15:00 ET.
-    const x = 15 * 3600 + t, days = ["FRI", "SAT", "SUN", "MON", "TUE"];
+    // The close is Friday 16:00 ET.
+    const x = 16 * 3600 - weekend[0] + t, days = ["FRI", "SAT", "SUN", "MON", "TUE"];
     const s = x % 86400;
     return `${days[Math.floor(x / 86400)] || ""} ${pad(s / 3600)}:${pad((s % 3600) / 60)}:${pad(s % 60)}`;
   }
@@ -122,7 +123,7 @@ function buildSetup() {
     b.addEventListener("click", () => {
       const f = b.closest(".row").dataset.field;
       const raw = b.dataset.value;
-      sel[f] = f === "mode" || f === "scenario" || f === "rule" ? raw : Number(raw);
+      sel[f] = f === "crowd" ? raw === "true" : f === "mode" || f === "scenario" || f === "rule" ? raw : Number(raw);
       dirty = true;
     });
   }
@@ -144,7 +145,7 @@ function renderSetup(s) {
   for (const row of document.querySelectorAll(".setup .row[data-field]")) {
     const v = sel[row.dataset.field];
     for (const b of row.querySelectorAll("button")) {
-      const on = typeof v === "number" ? Math.abs(Number(b.dataset.value) - v) < 1e-9 : b.dataset.value === v;
+      const on = typeof v === "number" ? Math.abs(Number(b.dataset.value) - v) < 1e-9 : b.dataset.value === String(v);
       b.classList.toggle("on", on);
     }
   }
@@ -235,7 +236,7 @@ function renderBar(s) {
     $("clock").textContent = s.run.done ? `stopped · ${pad(t / 60)}:${pad(t % 60)}` : `${pad(t / 60)}:${pad(t % 60)}`;
   } else {
     const m = s.market;
-    $("summary").innerHTML = `market · ${m.scenario.replace("_", " ")} · <span class="rule">${RULE_NAMES[m.rule]}</span> · B ${m.block_ms} ms · ${speedName(m.speed)} · load ×${m.load} · seed ${sp.seed}`;
+    $("summary").innerHTML = `market · ${m.scenario.replace("_", " ")} · <span class="rule">${RULE_NAMES[m.rule]}</span> · B ${m.block_ms} ms · ${speedName(m.speed)} · load ×${m.load} · ${sp.crowd ? "crowd" : "talk model"} · seed ${sp.seed}`;
     const state = s.run.done ? (s.run.stopped ? "stopped" : "complete") : m.seeking != null ? "skipping" : m.hidden ? "nasdaq closed" : "";
     $("clock").textContent = `${state ? state + " · " : ""}${vclock(s.run.clock_s, m.weekend)}`;
   }
@@ -375,85 +376,130 @@ function renderSystem(s) {
 
 // ---------- market ----------
 
+// The book and the tape are DOM lists: redrawing them 30 times a second under thousands of
+// messages a second is an unreadable flicker, so they refresh at most this often.
+const LIST_MS = 150;
+let lastLists = 0;
+
+function dur(sec) {
+  if (sec >= 3600) return `${+(sec / 3600).toFixed(sec % 3600 ? 1 : 0)} h`;
+  if (sec >= 60) return `${+(sec / 60).toFixed(sec % 60 ? 1 : 0)} min`;
+  if (sec >= 1) return `${+sec.toFixed(sec % 1 ? 1 : 0)} s`;
+  return `${+(sec * 1000).toFixed(0)} ms`;
+}
+
 function renderMarket(s) {
-  const m = s.market;
-  const chartCard = document.querySelector(".chart-card"), racesCard = document.querySelector(".races-card");
-  chartCard.hidden = !m;
-  racesCard.hidden = !m;
-  document.querySelector(".stress-note").hidden = !!m;
-  renderBook(s);
-  if (!m) return;
+  const m = s.market, stress = !m;
+  for (const el of document.querySelectorAll(".market-fig")) el.hidden = stress;
+  for (const el of document.querySelectorAll(".stress-fig")) el.hidden = !stress;
+  document.querySelector(".zoom-card").hidden = stress;
+  document.querySelector(".depth-card").hidden = !stress;
+  $("legend").innerHTML = `<em class="k-up"></em>trade up <em class="k-down"></em>trade down`
+    + (stress ? "" : ` <em class="k-nasdaq"></em>nasdaq <em class="k-mid"></em>book mid <em class="k-hidden"></em>hidden`);
+  const now = performance.now();
+  const lists = now - lastLists >= LIST_MS;
+  if (lists) { lastLists = now; renderBook(s); renderTape(s); }
+  drawChart(s);
+  if (stress) {
+    const t = s.tape[0];
+    $("m-last").textContent = t ? t[1].toFixed(2) : "–";
+    drawDepth(s);
+    return;
+  }
   $("m-nasdaq").textContent = m.nasdaq.toFixed(2);
   $("m-mid").textContent = m.mid == null ? "–" : m.mid.toFixed(3);
   const gap = m.mid == null ? null : m.nasdaq - m.mid;
   $("m-gap").textContent = gap == null ? "–" : Math.abs(gap) >= 1 ? usd(gap) : `${gap >= 0 ? "+" : "−"}${Math.abs(gap * 100).toFixed(1)}¢`;
   $("m-gap").classList.toggle("wide", gap != null && Math.abs(gap) >= 0.015);
   $("eclipse").classList.toggle("hidden-px", m.hidden);
-  drawChart(m);
-
-  const r = m.races;
-  const resolved = r.sniper + r.lp + r.other;
-  $("m-races").textContent = `sniper ${r.sniper} · LP ${r.lp}${resolved ? ` · LP wins ${Math.round((100 * r.lp) / resolved)}%` : ""}`;
-  $("feed").innerHTML = r.feed.slice(0, 5).map((x) => {
-    const key = `${x.t}-${x.stake}`;
-    const flash = x.winner === "sniper" && !seenSnipes.has(key);
-    if (x.winner === "sniper") seenSnipes.add(key);
-    return `<tr class="${flash ? "flash" : ""}"><td>${vclock(x.t, m.weekend)}</td><td class="w-${x.winner}">${x.winner} won</td><td>${usd(x.stake, false)} at stake</td><td>${x.ms.toFixed(1)} ms</td></tr>`;
-  }).join("") || `<tr><td>no race has ended yet</td></tr>`;
+  const r = m.races, resolved = r.sniper + r.lp + r.other;
+  $("m-races").textContent = resolved ? `all races: sniper ${num(r.sniper)} · LP ${num(r.lp)} · LP wins ${Math.round((100 * r.lp) / resolved)}%` : "";
+  drawZoom(m);
 }
 
 function renderBook(s) {
-  const asks = s.book.asks.slice(0, 8), bids = s.book.bids.slice(0, 8);
+  const n = s.state === "stress" ? 12 : 8;
+  const asks = s.book.asks.slice(0, n), bids = s.book.bids.slice(0, n);
   const max = Math.max(1, ...asks.map((l) => l[1]), ...bids.map((l) => l[1]));
   const v = s.market ? s.market.nasdaq : null;
-  const row = (l, stale) => `<li class="${stale ? "stale" : ""}"><span class="bar" style="width:${(100 * l[1]) / max}%"></span><span class="px">${l[0].toFixed(2)}</span><span class="qty">${l[1]}</span></li>`;
+  const row = (l, stale) => `<li class="${stale ? "stale" : ""}"><span class="bar" style="width:${(100 * l[1]) / max}%"></span><span class="px">${l[0].toFixed(2)}</span><span class="qty">${num(l[1])}</span></li>`;
   $("asks").innerHTML = asks.slice().reverse().map((l) => row(l, v != null && l[0] < v - 1e-9)).join("");
   $("bids").innerHTML = bids.map((l) => row(l, v != null && l[0] > v + 1e-9)).join("");
   const bb = bids[0], ba = asks[0];
   $("spread").textContent = bb && ba ? `spread ${Math.round((ba[0] - bb[0]) * 100)}¢` : "one side empty";
   const lv = s.book.levels[0] + s.book.levels[1];
-  $("m-levels").textContent = lv > 16 ? `${num(lv)} levels` : "";
+  $("m-levels").textContent = lv > 2 * n ? `top ${n} of ${num(lv)} levels` : "";
+}
+
+function renderTape(s) {
+  const stress = s.state === "stress", wk = s.market && s.market.weekend;
+  const when = (t) => stress ? `${pad(t / 60)}:${pad(t % 60)}` : vclock(t, wk).replace(/^(\w{3}) /, "");
+  $("tape").innerHTML = s.tape.slice(0, 14).map((t) =>
+    `<tr><td>${when(t[0])}</td><td class="${t[3] ? "buy" : "sell"}">${t[1].toFixed(2)}</td><td>${num(t[2])}</td><td class="${t[3] ? "buy" : "sell"}">${t[3] ? "buy" : "sell"}</td></tr>`).join("")
+    || `<tr><td>no trades yet</td></tr>`;
+  $("t-rate").textContent = stress ? "every trade the engine matched, newest first · sampled" : "newest first";
 }
 
 const chart = $("chart");
-const cctx = chart.getContext("2d");
 
 function niceStep(range, n) {
   const raw = range / n, mag = Math.pow(10, Math.floor(Math.log10(raw))), f = raw / mag;
   return (f < 1.5 ? 1 : f < 3 ? 2 : f < 7 ? 5 : 10) * mag;
 }
 
-function drawChart(m) {
+function canvas2d(cv) {
   const dpr = window.devicePixelRatio || 1;
-  const W = chart.clientWidth, H = chart.clientHeight;
-  if (chart.width !== Math.round(W * dpr) || chart.height !== Math.round(H * dpr)) { chart.width = Math.round(W * dpr); chart.height = Math.round(H * dpr); }
-  const ctx = cctx;
+  const W = cv.clientWidth, H = cv.clientHeight;
+  if (cv.width !== Math.round(W * dpr) || cv.height !== Math.round(H * dpr)) { cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr); }
+  const ctx = cv.getContext("2d");
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.clearRect(0, 0, W, H);
-  const c = m.chart, pts = c.points;
-  if (!pts.length) return;
-  const fs = parseFloat(CSS.fontSize) || 16;
-  const padL = 4, padR = fs * 3.6, padT = fs * 0.5, padB = fs * 1.4;
-  const tOf = (k) => c.t0 + ((k + 1) * (c.t1 - c.t0)) / c.n;
-  const x = (t) => padL + ((t - c.t0) / Math.max(1e-9, c.t1 - c.t0)) * (W - padL - padR);
-  let lo = Infinity, hi = -Infinity;
+  return { ctx, W, H, fs: parseFloat(CSS.fontSize) || 16 };
+}
+
+// The price chart: candles of the trades (both modes), and in market mode the Nasdaq price and
+// the book mid on the same time axis. Its scale is written on it, so nobody has to guess.
+function drawChart(s) {
+  const { ctx, W, H, fs } = canvas2d(chart);
+  const cd = s.candles, m = s.market, stress = !m;
+  const n = cd.c.length;
+  if (!n) return;
+  const t0 = cd.t0, t1 = cd.t0 + cd.w * n;
+  const padL = 4, padR = fs * 3.6, padT = fs * 1.7, padB = fs * 1.4;
+  const volH = (H - padT - padB) * 0.16;
+  const plotB = H - padB - volH - fs * 0.3;
+  const x = (t) => padL + ((t - t0) / (t1 - t0)) * (W - padL - padR);
+  const pts = m ? m.chart.points : [];
+  const tOf = (k) => m.chart.t0 + ((k + 1) * (m.chart.t1 - m.chart.t0)) / m.chart.n;
+
+  let lo = Infinity, hi = -Infinity, vmax = 0;
+  for (const c of cd.c) if (c) { lo = Math.min(lo, c[2]); hi = Math.max(hi, c[1]); vmax = Math.max(vmax, c[4]); }
   for (const p of pts) { lo = Math.min(lo, p[0], p[1] ?? p[0]); hi = Math.max(hi, p[0], p[1] ?? p[0]); }
+  if (!isFinite(lo)) return;
   if (hi - lo < 0.1) { const mid = (hi + lo) / 2; lo = mid - 0.05; hi = mid + 0.05; }
   const py = (hi - lo) * 0.08; lo -= py; hi += py;
-  const y = (v) => padT + (1 - (v - lo) / (hi - lo)) * (H - padT - padB);
-  const wk = m.weekend;
+  const y = (v) => padT + (1 - (v - lo) / (hi - lo)) * (plotB - padT);
+  const wk = m && m.weekend;
   const hidden = (t) => !!wk && t >= wk[0] && t < wk[1];
+
+  // The scale, in words.
+  ctx.font = `400 ${fs * 0.62}px ${MONO}`;
+  ctx.fillStyle = C.ink2;
+  ctx.textBaseline = "alphabetic";
+  const speed = m ? m.speed : 1;
+  ctx.fillText(`1 CANDLE = ${dur(cd.w).toUpperCase()} · WINDOW ${dur(cd.w * n).toUpperCase()}${m && speed !== 1 ? ` · PLAYING ${speedName(speed)}` : ""}${stress ? " OF WALL TIME" : ""}`, padL, fs * 0.8);
 
   if (wk) {
     const xa = Math.max(padL, x(wk[0])), xb = Math.min(W - padR, x(wk[1]));
     if (xb > xa) {
       ctx.fillStyle = "rgba(123, 97, 255, 0.07)";
-      ctx.fillRect(xa, padT, xb - xa, H - padT - padB);
+      ctx.fillRect(xa, padT, xb - xa, plotB - padT);
       ctx.fillStyle = C.ink3;
       ctx.font = `400 ${fs * 0.55}px ${MONO}`;
-      ctx.fillText("NASDAQ CLOSED · PRICE HIDDEN", xa + fs * 0.4, padT + fs * 0.9);
+      ctx.fillText("NASDAQ CLOSED · PRICE HIDDEN · NOBODY CAN PRICE THE STOCK", xa + fs * 0.4, padT + fs * 0.9);
     }
   }
+  // Price grid.
   const step = niceStep(hi - lo, 4);
   ctx.font = `400 ${fs * 0.6}px ${MONO}`;
   ctx.textBaseline = "middle";
@@ -462,42 +508,47 @@ function drawChart(m) {
     ctx.beginPath(); ctx.moveTo(padL, y(v)); ctx.lineTo(W - padR, y(v)); ctx.stroke();
     ctx.fillStyle = C.ink3; ctx.fillText(v.toFixed(2), W - padR + fs * 0.4, y(v));
   }
+  // Time labels.
   ctx.textBaseline = "alphabetic";
   ctx.fillStyle = C.ink3;
-  const span = c.t1 - c.t0;
-  const tStep = niceStep(span, 5);
-  for (let t = Math.ceil(c.t0 / tStep) * tStep; t <= c.t1; t += tStep) {
-    const label = wk && span > 3600 ? vclock(t, wk).slice(0, 9) : vclock(t, wk).replace(/\.\d$/, "");
+  const span = t1 - t0, tStep = niceStep(span, 5);
+  for (let t = Math.ceil(t0 / tStep) * tStep; t <= t1; t += tStep) {
+    const label = stress ? `${pad(t / 60)}:${pad(t % 60)}` : wk && span > 3600 ? vclock(t, wk).slice(0, 9) : vclock(t, wk).replace(/\.\d$/, "");
     const w = ctx.measureText(label).width;
     ctx.fillText(label, Math.max(padL, Math.min(x(t) - w / 2, W - padR - w)), H - fs * 0.3);
   }
+  // Volume and candles.
+  const slot = (W - padL - padR) / n, bw = Math.max(1, slot * 0.62);
+  cd.c.forEach((c, k) => {
+    if (!c) return;
+    const xc = x(t0 + (k + 0.5) * cd.w);
+    ctx.fillStyle = "rgba(163, 161, 169, 0.28)";
+    const vh = (c[4] / Math.max(1, vmax)) * volH;
+    ctx.fillRect(xc - bw / 2, H - padB - vh, bw, vh);
+    const up = c[3] >= c[0];
+    ctx.strokeStyle = up ? C.ink : C.ink3; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(xc, y(c[1])); ctx.lineTo(xc, y(c[2])); ctx.stroke();
+    const yt = y(Math.max(c[0], c[3])), yb = y(Math.min(c[0], c[3])), bh = Math.max(1, yb - yt);
+    if (up) { ctx.fillStyle = C.ink; ctx.fillRect(xc - bw / 2, yt, bw, bh); }
+    else { ctx.fillStyle = C.bg; ctx.fillRect(xc - bw / 2, yt, bw, bh); ctx.strokeRect(xc - bw / 2 + 0.5, yt + 0.5, bw - 1, Math.max(0, bh - 1)); }
+  });
+  if (!m || !pts.length) return;
 
-  // Steps when the price changes rarely across the window; a line when it changes often, so a
-  // busy window reads as a price chart instead of a comb.
-  let changes = 0;
-  for (let k = 1; k < pts.length; k++) if (pts[k][0] !== pts[k - 1][0]) changes++;
-  const stepped = changes < pts.length / 4;
+  // Nasdaq and the book mid.
   const path = (vals, keep) => {
     ctx.beginPath();
     let on = false, prev = null;
     for (let k = 0; k < vals.length; k++) {
       const v = vals[k], t = tOf(k);
       if (v == null || !keep(t)) { on = false; prev = null; continue; }
-      if (!on) { ctx.moveTo(x(t), y(v)); on = true; }
-      else {
-        if (stepped) ctx.lineTo(x(t), y(prev));
-        ctx.lineTo(x(t), y(v));
-      }
+      if (!on) { ctx.moveTo(x(t), y(v)); on = true; } else { ctx.lineTo(x(t), y(prev)); ctx.lineTo(x(t), y(v)); }
       prev = v;
     }
   };
-  // Book mid: dashed.
   ctx.setLineDash([fs * 0.35, fs * 0.28]);
-  ctx.strokeStyle = C.ink3; ctx.lineWidth = 1.5;
-  path(pts.map((p) => p[1]), () => true);
-  ctx.stroke();
+  ctx.strokeStyle = C.ink3; ctx.lineWidth = 1.2;
+  path(pts.map((p) => p[1]), () => true); ctx.stroke();
   ctx.setLineDash([]);
-  // Nasdaq: bright while visible; dark with a violet rim while hidden.
   const nas = pts.map((p) => p[0]);
   ctx.lineJoin = "round";
   ctx.save();
@@ -505,17 +556,28 @@ function drawChart(m) {
   ctx.strokeStyle = "rgba(214, 205, 255, 0.55)"; ctx.lineWidth = 4;
   path(nas, hidden); ctx.stroke();
   ctx.restore();
-  ctx.strokeStyle = "#0c0c10"; ctx.lineWidth = 2;
-  path(nas, hidden); ctx.stroke();
-  ctx.strokeStyle = C.ink; ctx.lineWidth = 2;
-  path(nas, (t) => !hidden(t)); ctx.stroke();
+  ctx.strokeStyle = "#0c0c10"; ctx.lineWidth = 2; path(nas, hidden); ctx.stroke();
+  ctx.strokeStyle = C.accentInk; ctx.lineWidth = 1.6; path(nas, (t) => !hidden(t)); ctx.stroke();
 
-  if (wk && wk[1] > c.t0 && wk[1] < c.t1 && tOf(pts.length - 1) >= wk[1]) {
+  const lk = pts.length - 1, lt = tOf(lk);
+  // While hidden: the gap between the frozen book and the hidden price, live.
+  if (m.hidden && m.mid != null) {
+    const xr = x(lt) + fs * 0.6, ya = y(m.mid), yb = y(m.nasdaq);
+    ctx.strokeStyle = C.accent; ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.moveTo(xr - fs * 0.3, ya); ctx.lineTo(xr, ya); ctx.lineTo(xr, yb); ctx.lineTo(xr - fs * 0.3, yb); ctx.stroke();
+    const g = m.nasdaq - m.mid;
+    const text = `GAP ${g >= 0 ? "+" : "−"}$${Math.abs(g).toFixed(2)} · THE PRIZE WAITING FOR MONDAY`;
+    ctx.font = `400 ${fs * 0.62}px ${MONO}`;
+    const tw = ctx.measureText(text).width;
+    const tx = Math.max(padL, Math.min(xr - tw - fs * 0.6, W - padR - tw)), ty = (ya + yb) / 2;
+    ctx.fillStyle = "rgba(5, 5, 7, 0.85)"; ctx.fillRect(tx - fs * 0.25, ty - fs * 0.7, tw + fs * 0.5, fs * 0.95);
+    ctx.fillStyle = C.accentInk; ctx.fillText(text, tx, ty);
+  }
+  if (wk && wk[1] > t0 && wk[1] < t1 && lt >= wk[1]) {
     const xr = x(wk[1]);
     ctx.strokeStyle = C.accent; ctx.lineWidth = 1;
-    ctx.beginPath(); ctx.moveTo(xr, padT); ctx.lineTo(xr, H - padB); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(xr, padT); ctx.lineTo(xr, plotB); ctx.stroke();
     const kb = pts.findIndex((_, k) => tOf(k) >= wk[1]);
-    // The gap that matters is against the book, which still quotes around Friday's price.
     let kmid = kb - 1;
     while (kmid >= 0 && pts[kmid][1] == null) kmid--;
     if (kb > 0 && kmid >= 0) {
@@ -528,11 +590,152 @@ function drawChart(m) {
       ctx.fillStyle = C.accentInk; ctx.fillText(text, tx, ty);
     }
   }
-  const lk = pts.length - 1, lt = tOf(lk);
-  ctx.fillStyle = hidden(lt) ? "#0c0c10" : C.ink;
-  ctx.strokeStyle = hidden(lt) ? C.accent : C.ink;
+  ctx.fillStyle = hidden(lt) ? "#0c0c10" : C.accentInk;
+  ctx.strokeStyle = hidden(lt) ? C.accent : C.accentInk;
   ctx.lineWidth = 2;
   ctx.beginPath(); ctx.arc(x(lt), y(pts[lk][0]), fs * 0.22, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+}
+
+// The race zoom: the last Nasdaq move that left quotes stale, on a millisecond axis. One row per
+// LP: when it sent its cancel and when the cancel reached the chain; the sniper's order as a
+// line across all rows. Everything here is narrower than one candle on the chart above.
+const zoomCv = $("zoom");
+const RULE_ORDER = {
+  fcfs: "inside a block, messages run in order of arrival",
+  pga: "inside a block, the highest priority fee runs first",
+  cancel_priority: "inside a block, cancels run before new orders",
+};
+
+function drawZoom(m) {
+  const { ctx, W, H, fs } = canvas2d(zoomCv);
+  const z = m.zoom;
+  if (!z) {
+    $("z-title").textContent = "waiting for one";
+    $("z-note").textContent = "A race starts when Nasdaq moves and an LP quote is left at a price a sniper can take.";
+    return;
+  }
+  // One row per LP; it lost if any of its stale quotes was sniped.
+  const lps = new Map();
+  for (const q of z.quotes) {
+    const r = lps.get(q.lp) || { see: q.see, arrive: q.arrive, end: q.end, lost: false, open: false, qty: 0 };
+    r.lost = r.lost || q.outcome === "sniper";
+    r.open = r.open || q.outcome === "open";
+    r.qty += q.qty;
+    lps.set(q.lp, r);
+  }
+  const rows = [...lps.values()].sort((a, b) => (a.arrive ?? 1e9) - (b.arrive ?? 1e9));
+  const lost = rows.filter((r) => r.lost).length;
+  const sn = z.sniper;
+  let tmax = 0;
+  for (const r of rows) tmax = Math.max(tmax, r.arrive ?? 0, r.end ?? 0, r.see ?? 0);
+  tmax = Math.max(tmax, sn.arrive ?? 0, 1) * 1.12;
+  const step = niceStep(tmax, 6);
+  tmax = Math.ceil(tmax / step) * step;
+
+  const move = `${z.move >= 0 ? "+" : "−"}${Math.abs(z.move)}¢`;
+  $("z-title").textContent = `nasdaq ${move} at ${vclock(z.t, m.weekend)}`;
+  const B = m.block_ms;
+  $("z-note").textContent = `${rows.length} LP${rows.length > 1 ? "s" : ""} had stale quotes: ${rows.length - lost} cancelled in time, ${lost} sniped. `
+    + (B > 0 ? `Blocks of ${B} ms: ${RULE_ORDER[m.rule]}. ` : "B = 0: every message runs the moment it arrives. ")
+    + `On the price chart this whole race is narrower than one pixel.`;
+
+  const padL = fs * 4.6, padR = fs * 1.2, padT = fs * 1.6, padB = fs * 1.3;
+  const x = (ms) => padL + (ms / tmax) * (W - padL - padR);
+  ctx.font = `400 ${fs * 0.62}px ${MONO}`;
+  ctx.textBaseline = "alphabetic";
+  ctx.fillStyle = C.ink2;
+  ctx.fillText(`ZOOM · 0–${+tmax.toFixed(1)} MS AFTER THE NASDAQ MOVE · 1 GRIDLINE = ${+step.toFixed(2)} MS`, 0, fs * 0.8);
+  // Grid.
+  ctx.font = `400 ${fs * 0.55}px ${MONO}`;
+  for (let t = 0; t <= tmax + 1e-9; t += step) {
+    ctx.strokeStyle = C.line; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(x(t), padT); ctx.lineTo(x(t), H - padB); ctx.stroke();
+    ctx.fillStyle = C.ink3;
+    const l = `${+t.toFixed(2)} ms`, w = ctx.measureText(l).width;
+    ctx.fillText(l, Math.min(x(t) - w / 2, W - padR - w), H - fs * 0.25);
+  }
+  // Block boundaries.
+  if (B > 0) {
+    const off = (z.t * 1000) % B;
+    for (let b = B - off; b <= tmax; b += B) {
+      ctx.strokeStyle = C.accent; ctx.setLineDash([fs * 0.25, fs * 0.2]); ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(x(b), padT); ctx.lineTo(x(b), H - padB); ctx.stroke(); ctx.setLineDash([]);
+      ctx.fillStyle = C.accentInk; ctx.fillText("block sealed", x(b) + fs * 0.2, padT + fs * 0.6);
+    }
+  }
+  // Lanes.
+  const laneH = H - padT - padB;
+  const sniperY = padT + fs * 0.9;
+  const lpTop = padT + fs * 1.9, lpH = Math.max(1, (laneH - fs * 2.1) / Math.max(1, rows.length));
+  ctx.fillStyle = C.ink3;
+  ctx.font = `400 ${fs * 0.58}px ${MONO}`;
+  ctx.fillText("NASDAQ", 0, padT + fs * 0.1);
+  ctx.fillText("SNIPER", 0, sniperY + fs * 0.2);
+  ctx.fillText(rows.length > 1 ? `${rows.length} LPS` : "LP", 0, lpTop + Math.min(laneH, lpH * rows.length) / 2);
+  // The move.
+  ctx.strokeStyle = C.accentInk; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.moveTo(x(0), padT - fs * 0.2); ctx.lineTo(x(0), H - padB); ctx.stroke();
+  // The sniper: sees the move, its order reaches the chain.
+  if (sn.arrive != null) {
+    ctx.strokeStyle = C.accent; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(x(sn.see), sniperY); ctx.lineTo(x(sn.arrive), sniperY); ctx.stroke();
+    ctx.fillStyle = C.accent;
+    ctx.beginPath(); ctx.arc(x(sn.arrive), sniperY, fs * 0.22, 0, Math.PI * 2); ctx.fill();
+    ctx.setLineDash([fs * 0.15, fs * 0.2]); ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(x(sn.arrive), sniperY); ctx.lineTo(x(sn.arrive), H - padB); ctx.stroke(); ctx.setLineDash([]);
+    ctx.fillStyle = C.accentInk;
+    ctx.fillText(`order on chain ${sn.arrive.toFixed(1)} ms`, x(sn.arrive) + fs * 0.4, sniperY + fs * 0.2);
+  }
+  // The LPs.
+  rows.forEach((r, i) => {
+    const yy = lpTop + (i + 0.5) * lpH;
+    const col = r.lost ? C.accent : C.ink;
+    const w = Math.max(1, Math.min(fs * 0.3, lpH * 0.5));
+    if (r.see != null && r.arrive != null) {
+      ctx.strokeStyle = r.lost ? "rgba(123, 97, 255, 0.55)" : "rgba(237, 235, 230, 0.45)"; ctx.lineWidth = w * 0.6;
+      ctx.beginPath(); ctx.moveTo(x(Math.max(0, r.see)), yy); ctx.lineTo(x(r.arrive), yy); ctx.stroke();
+    }
+    const at = r.arrive ?? r.end;
+    if (at != null) {
+      ctx.fillStyle = col;
+      ctx.beginPath(); ctx.arc(x(at), yy, w, 0, Math.PI * 2); ctx.fill();
+    }
+  });
+  // Legend.
+  ctx.font = `400 ${fs * 0.55}px ${MONO}`;
+  const leg = "LINE: CANCEL SENT → REACHES CHAIN · WHITE = ESCAPED · VIOLET = SNIPED";
+  ctx.fillStyle = C.ink3;
+  ctx.fillText(leg, W - padR - ctx.measureText(leg).width, fs * 0.8);
+}
+
+// Stress: cumulative depth, so the shape of the book reads at a glance however fast it changes.
+const depthCv = $("depth");
+function drawDepth(s) {
+  const { ctx, W, H, fs } = canvas2d(depthCv);
+  const bids = s.book.bids, asks = s.book.asks;
+  if (!bids.length || !asks.length) return;
+  const cum = (lv) => { let a = 0; return lv.map((l) => [l[0], (a += l[1])]); };
+  const cb = cum(bids), ca = cum(asks);
+  const lo = cb[cb.length - 1][0], hi = ca[ca.length - 1][0];
+  const vmax = Math.max(cb[cb.length - 1][1], ca[ca.length - 1][1]);
+  const padB = fs * 1.3, padT = fs * 0.4;
+  const x = (p) => ((p - lo) / Math.max(1e-9, hi - lo)) * W;
+  const y = (v) => H - padB - (v / vmax) * (H - padB - padT);
+  const side = (pts, fill, stroke) => {
+    ctx.beginPath(); ctx.moveTo(x(pts[0][0]), H - padB);
+    for (const [p, v] of pts) { ctx.lineTo(x(p), y(v)); }
+    ctx.lineTo(x(pts[pts.length - 1][0]), H - padB); ctx.closePath();
+    ctx.fillStyle = fill; ctx.fill(); ctx.strokeStyle = stroke; ctx.lineWidth = 1.5; ctx.stroke();
+  };
+  side(cb, "rgba(237, 235, 230, 0.12)", C.ink);
+  side(ca, "rgba(123, 97, 255, 0.16)", C.accent);
+  ctx.font = `400 ${fs * 0.58}px ${MONO}`;
+  ctx.fillStyle = C.ink3;
+  ctx.fillText(`bids ${lo.toFixed(2)}`, 0, H - fs * 0.25);
+  const r = `asks ${hi.toFixed(2)}`;
+  ctx.fillText(r, W - ctx.measureText(r).width, H - fs * 0.25);
+  const mid = `${num(vmax)} lots`;
+  ctx.fillText(mid, (W - ctx.measureText(mid).width) / 2, padT + fs * 0.6);
 }
 
 // ---------- profits ----------

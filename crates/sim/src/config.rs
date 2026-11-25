@@ -315,6 +315,15 @@ impl Scenario {
             .to_vec();
         s.regular.count = 60;
         s.price.step_rate_per_s *= 4.0;
+        if let Some(w) = &mut s.weekend {
+            // Five busy minutes before the close instead of an hour, so skipping to the close
+            // takes seconds, and the same weekend flow in total as the talk's single trader.
+            let shift = (w.close_at_s - 300.0).max(0.0);
+            w.close_at_s -= shift;
+            w.reopen_at_s -= shift;
+            s.duration_s -= shift as u64;
+            s.regular.weekend_rate_per_s /= s.regular.count as f64;
+        }
         s
     }
 

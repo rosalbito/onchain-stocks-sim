@@ -24,6 +24,7 @@ use rtrb::{Consumer, Producer};
 use sim::log::FillsHasher;
 use sim::{Control, Counts, Live, OrderingRule, Scenario};
 
+use crate::charts::{self, Candle, Candles, Tape, TapeRow, Zoom};
 use crate::stress::{self, ProducerHandle, StressMsg, PARAM_STRESS_RATE};
 use crate::sysinfo::{Telemetry, T_ENGINE, W_LOG, W_STANDBY};
 
@@ -136,7 +137,7 @@ pub enum StandbyMsg {
     Exit,
 }
 
-pub const DEPTH: usize = 10;
+pub const DEPTH: usize = 20;
 pub const RACES: usize = 8;
 /// Points on the price chart.
 pub const CHART: usize = 240;
@@ -159,6 +160,17 @@ pub enum Outcome {
     Lp,
     Sniper,
     Other,
+}
+
+impl From<RaceOutcome> for Outcome {
+    fn from(o: RaceOutcome) -> Self {
+        match o {
+            RaceOutcome::LpWon => Outcome::Lp,
+            RaceOutcome::SniperWon => Outcome::Sniper,
+            RaceOutcome::OtherFilled => Outcome::Other,
+            RaceOutcome::Unresolved => Outcome::Open,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, Default)]
@@ -205,6 +217,7 @@ pub struct MarketFrame {
     /// (true price, bid + ask, or i64::MIN when one side is empty).
     pub chart: [(i64, i64); CHART],
     pub n_chart: u16,
+    pub zoom: Zoom,
 }
 
 impl Default for MarketFrame {
@@ -228,6 +241,7 @@ impl Default for MarketFrame {
             chart_t1: 0,
             chart: [(0, i64::MIN); CHART],
             n_chart: 0,
+            zoom: Zoom::default(),
         }
     }
 }
@@ -268,6 +282,9 @@ pub struct Frame {
     pub levels: (u32, u32),
     pub rings: [RingStat; 5],
     pub fills_hash: [u8; 64],
+    /// Candles of the trades: virtual time in market mode, wall time since start in stress.
+    pub candles: Candles,
+    pub tape: Tape,
     pub market: MarketFrame,
     pub stress: StressFrame,
 }
@@ -381,7 +398,45 @@ struct StressRun {
     /// The producer's `Stop` record went through: the run is complete.
     stopped: bool,
     ended: bool,
+    /// One-second candles of the fills, by wall time since the start.
+    bins: Vec<Candle>,
+    /// The latest fills, a ring: the next one goes at `tape_pos`.
+    tape: Tape,
+    tape_pos: usize,
 }
+
+impl StressRun {
+    fn candles(&self) -> Candles {
+        let width = STRESS_CANDLE_NS;
+        let now = self.start.elapsed().as_nanos() as u64 / width + 1;
+        let first = now.saturating_sub(charts::CANDLES as u64);
+        let mut c = Candles {
+            t0: first * width,
+            width,
+            n: charts::CANDLES as u16,
+            ..Candles::default()
+        };
+        for (k, dst) in c.c.iter_mut().enumerate() {
+            if let Some(b) = self.bins.get(first as usize + k) {
+                *dst = *b;
+            }
+        }
+        c
+    }
+
+    fn tape_newest_first(&self) -> Tape {
+        let mut out = Tape {
+            n: self.tape.n,
+            ..Tape::default()
+        };
+        for (k, dst) in out.rows.iter_mut().take(self.tape.n as usize).enumerate() {
+            *dst = self.tape.rows[(self.tape_pos + charts::TAPE - 1 - k) % charts::TAPE];
+        }
+        out
+    }
+}
+
+const STRESS_CANDLE_NS: u64 = 1_000_000_000;
 
 enum Run {
     Idle,
@@ -575,6 +630,9 @@ impl EngineThread {
                 },
                 stopped: false,
                 ended: false,
+                bins: Vec::new(),
+                tape: Tape::default(),
+                tape_pos: 0,
             }));
             (info, run)
         } else {
@@ -764,13 +822,10 @@ impl EngineThread {
         );
     }
 
-    /// The chart window: about a minute of wall time at the current speed, at least 20 s of
-    /// virtual time, at most the run. It trails the clock, and starts at 0 until it fills.
-    fn chart_window(m: &MarketRun) -> (u64, u64) {
-        let end = m.live.end_ns();
-        let w = ((m.view_speed as u128 * 60_000_000) as u64).clamp(20_000_000_000, end.max(1));
-        let t0 = m.live.clock().saturating_sub(w).min(end.saturating_sub(w));
-        (t0, t0 + w)
+    /// The chart window (see `charts::market_window`): (t0, t1, candle width).
+    fn chart_window(m: &MarketRun) -> (u64, u64, u64) {
+        let (t0, width) = charts::market_window(m.live.clock(), m.live.end_ns(), m.view_speed);
+        (t0, t0 + width * charts::CANDLES as u64, width)
     }
 
     fn market_frame(m: &MarketRun) -> MarketFrame {
@@ -804,19 +859,14 @@ impl EngineThread {
                 end_t_ns: r.end_t_ns.unwrap_or(0),
                 staleness: r.staleness,
                 qty,
-                outcome: match r.outcome {
-                    RaceOutcome::LpWon => Outcome::Lp,
-                    RaceOutcome::SniperWon => Outcome::Sniper,
-                    RaceOutcome::OtherFilled => Outcome::Other,
-                    RaceOutcome::Unresolved => Outcome::Open,
-                },
+                outcome: Outcome::from(r.outcome),
             };
         }
 
         // The chart: the true price and the book mid at the end of each of CHART equal slices
         // of the window, up to the clock. Sampling the source (the true path, every mid change)
         // at a resolution set by the window means no zoom level crowds steps together.
-        let (t0, t1) = Self::chart_window(m);
+        let (t0, t1, _) = Self::chart_window(m);
         let path = live.price_path();
         let mut pi = path.partition_point(|p| p.0 <= t0).saturating_sub(1);
         let mut mi = m.mids.partition_point(|p| p.0 <= t0).saturating_sub(1);
@@ -864,6 +914,7 @@ impl EngineThread {
             chart_t1: t1,
             chart,
             n_chart: n_chart as u16,
+            zoom: charts::zoom(live),
         }
     }
 
@@ -881,6 +932,11 @@ impl EngineThread {
             return false;
         }
         let t = Instant::now();
+        let bin_t = t.duration_since(s.start).as_nanos() as u64;
+        let bin = (bin_t / STRESS_CANDLE_NS) as usize;
+        if s.bins.len() <= bin {
+            s.bins.resize(bin + 1, Candle::default());
+        }
         let mut n = 0;
         let mut sent = [0u64; 64];
         let mut n_sent = 0;
@@ -904,9 +960,24 @@ impl EngineThread {
             );
             s.engine.on_message_into(&rec, &mut s.out);
             for ev in &s.out {
-                if matches!(ev.kind, EventKind::Fill { .. }) {
+                if let EventKind::Fill {
+                    px,
+                    qty,
+                    taker_side,
+                    ..
+                } = ev.kind
+                {
                     s.fills += 1;
                     s.hasher.update(ev.seq, &ev.kind);
+                    s.bins[bin].add(px, qty);
+                    s.tape.rows[s.tape_pos] = TapeRow {
+                        t_ns: bin_t,
+                        px,
+                        qty,
+                        buy: taker_side == Side::Buy,
+                    };
+                    s.tape_pos = (s.tape_pos + 1) % charts::TAPE;
+                    s.tape.n = s.tape.n.saturating_add(1).min(charts::TAPE as u8);
                 }
             }
             push_wait(
@@ -1060,6 +1131,8 @@ impl EngineThread {
             levels: (b.len() as u32, a.len() as u32),
             rings,
             fills_hash: [b'0'; 64],
+            candles: Candles::default(),
+            tape: Tape::default(),
             market: MarketFrame::default(),
             stress: StressFrame::default(),
         };
@@ -1077,6 +1150,9 @@ impl EngineThread {
                 frame.fills = live.counts().fills;
                 frame.fills_hash = hash_bytes(&live.fills_hash());
                 frame.market = Self::market_frame(m);
+                let (t0, _, width) = Self::chart_window(m);
+                frame.candles = charts::candles(live.trades(), t0, width);
+                frame.tape = charts::tape(live.trades());
                 checkpoint = Some((m.published as u64, frame.fills_hash));
             }
             Run::Stress(s) => {
@@ -1114,6 +1190,8 @@ impl EngineThread {
                 }
                 s.last.orders_resting = s.engine.order_count() as u64;
                 frame.stress = s.last;
+                frame.candles = s.candles();
+                frame.tape = s.tape_newest_first();
             }
         }
         // The standby checks itself against the primary at this point.

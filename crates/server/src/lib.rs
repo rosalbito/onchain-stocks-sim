@@ -16,6 +16,7 @@
 //! run ends: a market run must re-simulate from its log byte for byte, a stress run must replay
 //! and regenerate to the same fills.
 
+mod charts;
 mod engine_thread;
 mod journal;
 mod qos;

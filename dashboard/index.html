@@ -22,6 +22,7 @@
       <div class="row market-only" data-field="rule"><span class="label">ordering rule</span><div class="choices"></div></div>
       <div class="row market-only" data-field="block_ms"><span class="label">block B</span><div class="choices"></div></div>
       <div class="row market-only" data-field="speed"><span class="label">speed</span><div class="choices"></div></div>
+      <div class="row market-only" data-field="crowd"><span class="label">agents</span><div class="choices"></div></div>
       <div class="row stress-only" data-field="rate"><span class="label">target rate</span><div class="choices"></div></div>
       <div class="row">
         <span class="label">seed</span>
@@ -98,19 +99,26 @@
     </main>
 
     <main id="page-market" class="page market" hidden>
-      <div class="card stress-note" hidden>
-        <h2 class="label">stress flow</h2>
-        <p>The flow is synthetic: limit orders around a drifting mid, cancels and marketable IOCs from 64 accounts, at the target rate. There is no Nasdaq price and no races here; the book on the right is the engine's live book.</p>
-      </div>
       <div class="card chart-card">
         <div class="eclipse" id="eclipse" aria-hidden="true"></div>
         <div class="figures">
-          <span><i>nasdaq</i><b id="m-nasdaq">–</b></span>
-          <span><i>book mid</i><b id="m-mid">–</b></span>
-          <span><i>gap</i><b id="m-gap">–</b></span>
-          <span class="legend"><em class="k-nasdaq"></em>nasdaq <em class="k-mid"></em>book mid <em class="k-hidden"></em>hidden</span>
+          <span class="market-fig"><i>nasdaq</i><b id="m-nasdaq">–</b></span>
+          <span class="market-fig"><i>book mid</i><b id="m-mid">–</b></span>
+          <span class="market-fig"><i>gap</i><b id="m-gap">–</b></span>
+          <span class="stress-fig"><i>last trade</i><b id="m-last">–</b></span>
+          <span class="legend" id="legend"></span>
         </div>
         <canvas id="chart"></canvas>
+      </div>
+      <div class="card zoom-card">
+        <h2 class="label">last race · <span id="z-title"></span><span id="m-races" class="dim"></span></h2>
+        <canvas id="zoom"></canvas>
+        <p id="z-note" class="note"></p>
+      </div>
+      <div class="card depth-card" hidden>
+        <h2 class="label">depth · <span class="dim">lots resting at each price, added up from the best price out</span></h2>
+        <canvas id="depth"></canvas>
+        <p class="note">Synthetic flow: limit orders around a drifting price, cancels and marketable IOCs from 64 accounts, at the target rate. No Nasdaq price and no races here.</p>
       </div>
       <div class="card book-card">
         <h2 class="label">book <span id="m-levels" class="dim"></span></h2>
@@ -118,9 +126,9 @@
         <div id="spread" class="spread"></div>
         <ol id="bids" class="ladder bids"></ol>
       </div>
-      <div class="card races-card">
-        <h2 class="label">races <span id="m-races" class="dim"></span></h2>
-        <table class="feed"><tbody id="feed"></tbody></table>
+      <div class="card tape-card">
+        <h2 class="label">trades <span id="t-rate" class="dim"></span></h2>
+        <table class="tape"><tbody id="tape"></tbody></table>
       </div>
     </main>
 
