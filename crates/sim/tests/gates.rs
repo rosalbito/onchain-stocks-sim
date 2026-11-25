@@ -331,6 +331,11 @@ fn metrics_agree_with_the_simulation() {
                 assert_eq!(m.notional_tick_lots, r.counts.notional_tick_lots, "{ctx}");
                 assert_eq!(m.taker_fees, r.taker_fees, "{ctx}");
                 assert_eq!(m.priority_fees, r.priority_fees, "{ctx}");
+                assert_eq!(
+                    m.priority_fees_by.iter().sum::<i128>(),
+                    m.priority_fees,
+                    "{ctx}"
+                );
                 for h in 0..NH {
                     assert_eq!(m.class_pnl[h].iter().sum::<i128>(), 0, "{ctx} h={h}");
                 }
@@ -342,6 +347,12 @@ fn metrics_agree_with_the_simulation() {
                 }
                 assert_eq!(m.quoted.total_ns, s.duration_s * 1_000_000_000, "{ctx}");
                 assert_eq!(m.monday.is_some(), name == "monday_open", "{ctx}");
+                if let Some(mo) = m.monday {
+                    // The gap prize splits into disjoint parts: the share is in [0, 1].
+                    let parts = [mo.sniper_took, mo.lp_kept, mo.other_took];
+                    assert!(parts.iter().all(|&x| x >= 0), "{ctx} {mo:?}");
+                    assert!(parts.iter().sum::<i128>() <= mo.prize, "{ctx} {mo:?}");
+                }
             }
         }
     }
