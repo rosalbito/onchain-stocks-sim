@@ -233,7 +233,11 @@ impl Sim {
         let mut specs: Vec<(Latency, Latency, Role)> = Vec::new();
         for i in 0..cfg.lp.count {
             let id = FEED_ID + 1 + i;
-            specs.push((cfg.lp.see, cfg.lp.send, Role::Lp(Lp::new(id, &cfg.lp, pga))));
+            let mut see = cfg.lp.see;
+            if cfg.lp.count > 1 {
+                see.base_us += cfg.lp.see_spread_us * i as u64 / (cfg.lp.count as u64 - 1);
+            }
+            specs.push((see, cfg.lp.send, Role::Lp(Lp::new(id, &cfg.lp, pga))));
         }
         for _ in 0..cfg.sniper.count {
             let role = Role::Sniper(Sniper::new(&cfg.sniper, pga));
