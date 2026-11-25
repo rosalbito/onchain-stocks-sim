@@ -80,7 +80,7 @@ async fn market_run_streams_takes_live_changes_and_its_log_replays() {
     assert_eq!(v["run"]["id"], 0);
     send(
         &mut ws,
-        json!({"cmd":"start","mode":"market","scenario":"news_jump","seed":3,"speed":4}),
+        json!({"cmd":"start","mode":"market","scenario":"news_jump","seed":3,"speed":4,"crowd":false}),
     )
     .await;
     let first = until(&mut ws, 5, "a market run", |v| {
@@ -164,10 +164,10 @@ async fn market_run_streams_takes_live_changes_and_its_log_replays() {
     // rule, B, load, speed and stop.
     assert_eq!(sim::config_records(&records), 5);
 
-    // Skip: a minute before the close, then over the hidden weekend to 30 s before the reopen.
+    // The talk model (no crowd), whose close is at 1 h. Skip: a minute before the close, then over the hidden weekend to 30 s before the reopen.
     send(
         &mut ws,
-        json!({"cmd":"start","mode":"market","scenario":"monday_open","speed":10}),
+        json!({"cmd":"start","mode":"market","scenario":"monday_open","speed":10,"crowd":false}),
     )
     .await;
     until(&mut ws, 5, "monday open", |v| {
