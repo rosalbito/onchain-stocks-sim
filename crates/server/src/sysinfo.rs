@@ -89,7 +89,10 @@ pub fn disk_free_bytes(path: &Path) -> u64 {
         if libc::statvfs(c.as_ptr(), &mut st) != 0 {
             return 0;
         }
-        st.f_bavail as u64 * st.f_frsize as u64
+        // The field types differ by platform (u32 on macOS, u64 on Linux).
+        #[allow(clippy::unnecessary_cast)]
+        let free = st.f_bavail as u64 * st.f_frsize as u64;
+        free
     }
 }
 
