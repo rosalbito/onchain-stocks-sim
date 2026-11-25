@@ -327,8 +327,15 @@ fn scenario_cfg(spec: &StartSpec) -> Scenario {
         Scenario::from_toml(SCENARIOS[spec.scenario as usize].1).expect("embedded scenario");
     cfg.sequencer.rule = spec.rule;
     cfg.sequencer.block_ms = spec.block_ms;
+    // The headline PGA bid (DECISIONS 77): the snipers together bid 0.3 of the prize, split
+    // equally. The config default (0.5 each) stays for the golden hashes, but live runs must
+    // match the numbers on the slides. It only matters under PGA, and a live rule switch keeps it.
+    cfg.sniper.alpha_bps = HEADLINE_ALPHA_BPS / cfg.sniper.count.max(1) as u64;
     cfg
 }
+
+/// The snipers' combined PGA bid, in bps of the prize (DECISIONS 77).
+pub const HEADLINE_ALPHA_BPS: u64 = 3_000;
 
 fn window_hist() -> Histogram<u64> {
     Histogram::new_with_bounds(1, 60_000_000_000, 3).unwrap()
