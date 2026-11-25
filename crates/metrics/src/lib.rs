@@ -1,12 +1,14 @@
-//! Market metrics. Phase 2 implements only what the simulation gates need: the five account
-//! classes, the zero-sum check (spec section 9) and race counting (spec section 10).
+//! Market metrics (spec section 10): the five account classes, the zero-sum check (section 9),
+//! race counting and every market metric of a run ([`measure`]).
 //!
 //! No floats here: rates are returned as integer numerator/denominator pairs and converted only
 //! when a report prints them.
 
+pub mod measure;
 mod races;
 mod zero_sum;
 
+pub use measure::{measure, MeasureInput, Metrics, PricePath, Weekend};
 pub use races::{Race, RaceOutcome, RaceStats, RaceTracker};
 pub use zero_sum::{class_pnl, format_cash, zero_sum_check, Balance, ClassPnl, ZeroSumError};
 

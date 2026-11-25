@@ -1,3 +1,7 @@
 /target
 /out
 *.snap.new
+
+# analysis
+/analysis/.venv
+__pycache__/
