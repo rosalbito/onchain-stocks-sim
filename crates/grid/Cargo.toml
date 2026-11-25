@@ -1,0 +1,23 @@
+[package]
+name = "grid"
+description = "The section 13 experiment grid: runs in parallel (rayon, across runs only), parquet out."
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+sim = { path = "../sim" }
+engine.workspace = true
+metrics.workspace = true
+clap.workspace = true
+rand_core.workspace = true
+rand_chacha.workspace = true
+rayon = "1"
+arrow-array = "60"
+arrow-schema = "60"
+parquet = { version = "60", default-features = false, features = ["arrow", "snap"] }
+
+[[bin]]
+name = "grid"
+path = "src/main.rs"

@@ -16,6 +16,8 @@ pub struct Pending {
     pub t_ns: u64,
     /// Arrival counter, the final tie-break.
     pub tiebreak: u64,
+    /// When the sender decided to send it. Not used for ordering; kept for the metrics.
+    pub decided_ns: u64,
     pub agent: AgentId,
     pub kind: MsgKind,
 }
@@ -49,6 +51,11 @@ pub struct Sequencer {
     arrivals: u64,
     /// With B = 0, the block counter (one block per message).
     next_solo_block: u64,
+    /// Block numbering since the last live change of B: block `epoch_base + k` covers
+    /// [epoch_start_ns + kB, epoch_start_ns + (k+1)B). Both are 0 unless B changed, so a run
+    /// without live changes numbers blocks t / B, as before.
+    epoch_start_ns: u64,
+    epoch_base: u64,
 }
 
 impl Sequencer {
@@ -59,6 +66,8 @@ impl Sequencer {
             open: BTreeMap::new(),
             arrivals: 0,
             next_solo_block: 0,
+            epoch_start_ns: 0,
+            epoch_base: 0,
         }
     }
 
@@ -66,16 +75,66 @@ impl Sequencer {
         self.rule
     }
 
+    pub fn block_ms(&self) -> u64 {
+        self.block_ns / 1_000_000
+    }
+
     /// The block a message (or a tick) arriving at `t_ns` belongs to.
     pub fn block_at(&self, t_ns: u64) -> u64 {
         if self.block_ns == 0 {
             self.next_solo_block
         } else {
-            t_ns / self.block_ns
+            self.epoch_base + (t_ns - self.epoch_start_ns) / self.block_ns
         }
     }
 
-    pub fn accept(&mut self, t_ns: u64, agent: AgentId, kind: MsgKind) -> Accepted {
+    /// When block `block` closes (B > 0).
+    fn close_ns(&self, block: u64) -> u64 {
+        self.epoch_start_ns + (block - self.epoch_base + 1) * self.block_ns
+    }
+
+    /// Whether `block` holds messages waiting for its close.
+    pub fn is_open(&self, block: u64) -> bool {
+        self.open.contains_key(&block)
+    }
+
+    /// Live change of the ordering rule. Blocks still open are sorted by the new rule when
+    /// they close.
+    pub fn set_rule(&mut self, rule: OrderingRule) {
+        self.rule = rule;
+    }
+
+    /// Live change of B at `now`. Every open block is sealed now (returned in block order,
+    /// each sorted by the current rule), and numbering restarts after the last block used, so
+    /// block numbers keep increasing and a stale close event finds no block.
+    pub fn set_block_ms(&mut self, now: u64, block_ms: u64) -> Vec<(u64, Vec<Pending>)> {
+        let next = if self.block_ns == 0 {
+            self.next_solo_block
+        } else {
+            self.block_at(now) + 1
+        };
+        let open = std::mem::take(&mut self.open);
+        let sealed = open
+            .into_iter()
+            .map(|(block, mut msgs)| {
+                sort_block(self.rule, &mut msgs);
+                (block, msgs)
+            })
+            .collect();
+        self.block_ns = block_ms * 1_000_000;
+        self.epoch_start_ns = now;
+        self.epoch_base = next;
+        self.next_solo_block = next;
+        sealed
+    }
+
+    pub fn accept(
+        &mut self,
+        t_ns: u64,
+        decided_ns: u64,
+        agent: AgentId,
+        kind: MsgKind,
+    ) -> Accepted {
         let tiebreak = self.arrivals;
         self.arrivals += 1;
         if self.block_ns == 0 {
@@ -83,17 +142,19 @@ impl Sequencer {
             self.next_solo_block += 1;
             return Accepted::Now { block };
         }
-        let block = t_ns / self.block_ns;
+        let block = self.block_at(t_ns);
+        let close = self.close_ns(block);
         let entry = self.open.entry(block).or_default();
         let first = entry.is_empty();
         entry.push(Pending {
             t_ns,
             tiebreak,
+            decided_ns,
             agent,
             kind,
         });
         Accepted::Buffered {
-            schedule_close: first.then_some((block, (block + 1) * self.block_ns)),
+            schedule_close: first.then_some((block, close)),
         }
     }
 

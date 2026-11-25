@@ -342,6 +342,13 @@ impl Scenario {
         Ok(())
     }
 
+    /// Set the speed gap (spec section 13): every sniper latency (see and send, base and jitter)
+    /// becomes the LP's times `num / den`.
+    pub fn set_speed_gap(&mut self, num: u64, den: u64) {
+        self.sniper.see = self.lp.see.scaled(num, den);
+        self.sniper.send = self.lp.send.scaled(num, den);
+    }
+
     /// Multiply every agent latency (base and jitter) by `num / den`.
     pub fn scale_latencies(&mut self, num: u64, den: u64) {
         self.lp.see = self.lp.see.scaled(num, den);

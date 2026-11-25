@@ -102,6 +102,12 @@ impl Lp {
         self.inventory
     }
 
+    /// A live switch of the ordering rule. The rule is a public protocol parameter, so the LP
+    /// learns it at once, like the calendar close.
+    pub fn set_pga(&mut self, pga: bool) {
+        self.pga = pga;
+    }
+
     pub fn observe(&mut self, obs: &Obs) -> Vec<MsgKind> {
         let mut out = Vec::new();
         match obs {
@@ -174,23 +180,39 @@ impl Lp {
         if !self.quoting_allowed() {
             return;
         }
-        let width = if self.closed && self.cfg.weekend_policy == WeekendPolicy::Widen {
+        for side in [Side::Buy, Side::Sell] {
+            if self.side_fits(side) {
+                self.post_ladder(side, p, out);
+            }
+        }
+    }
+
+    fn width(&self) -> i64 {
+        if self.closed && self.cfg.weekend_policy == WeekendPolicy::Widen {
             self.cfg.weekend_widen
         } else {
             1
-        };
+        }
+    }
+
+    /// Whether a full ladder on `side` keeps inventory within the cap if it all fills.
+    fn side_fits(&self, side: Side) -> bool {
         let total: i64 = self.cfg.levels.iter().map(|l| l.qty_lots as i64).sum();
         let cap = self.cfg.inventory_cap_lots;
-        let levels = self.cfg.levels.clone();
-        if self.inventory + total <= cap {
-            for l in &levels {
-                self.post(Side::Buy, p - l.offset_ticks * width, l.qty_lots, out);
-            }
+        match side {
+            Side::Buy => self.inventory + total <= cap,
+            Side::Sell => self.inventory - total >= -cap,
         }
-        if self.inventory - total >= -cap {
-            for l in &levels {
-                self.post(Side::Sell, p + l.offset_ticks * width, l.qty_lots, out);
-            }
+    }
+
+    fn post_ladder(&mut self, side: Side, center: Px, out: &mut Vec<MsgKind>) {
+        let width = self.width();
+        for l in self.cfg.levels.clone() {
+            let px = match side {
+                Side::Buy => center - l.offset_ticks * width,
+                Side::Sell => center + l.offset_ticks * width,
+            };
+            self.post(side, px, l.qty_lots, out);
         }
     }
 
@@ -313,6 +335,48 @@ impl Lp {
                 self.post(side, px, qty, out);
             }
         }
+        // Top up: a side the cap stopped (or thinned) comes back to the full ladder once
+        // inventory allows it again (docs/DECISIONS.md, entry 50). Without this, a side lost to
+        // the cap stays empty until the next price move, and over the hidden weekend there is
+        // none. When the cap does not bind, the refills above already restored every level and
+        // this posts nothing.
+        if let Some(c) = self.center {
+            let width = self.width();
+            for side in [Side::Buy, Side::Sell] {
+                if !self.side_fits(side) {
+                    continue;
+                }
+                for l in self.cfg.levels.clone() {
+                    let px = match side {
+                        Side::Buy => c - l.offset_ticks * width,
+                        Side::Sell => c + l.offset_ticks * width,
+                    };
+                    let have = self.current_level_qty(side, px);
+                    if have < l.qty_lots {
+                        self.post(side, px, l.qty_lots - have, out);
+                    }
+                }
+            }
+        }
+    }
+
+    /// Lots resting or pending at one price of the current quote.
+    fn current_level_qty(&self, side: Side, px: Px) -> Qty {
+        let live: Qty = self
+            .live
+            .values()
+            .filter(|q| {
+                q.side == side && q.px == px && !q.cancel_sent && q.generation == self.generation
+            })
+            .map(|q| q.qty)
+            .sum();
+        let pending: Qty = self
+            .pending
+            .iter()
+            .filter(|q| q.side == side && q.px == px && q.generation == self.generation)
+            .map(|q| q.qty)
+            .sum();
+        live + pending
     }
 }
 
@@ -339,6 +403,11 @@ impl Sniper {
             bids: BTreeMap::new(),
             asks: BTreeMap::new(),
         }
+    }
+
+    /// A live switch of the ordering rule, learned at once (see [`Lp::set_pga`]).
+    pub fn set_pga(&mut self, pga: bool) {
+        self.pga = pga;
     }
 
     fn fee(&self, prize_tick_lots: i128) -> u64 {
@@ -587,6 +656,48 @@ mod tests {
                 order_id: 7,
                 priority_fee: 0
             }]
+        );
+    }
+
+    #[test]
+    fn lp_restores_a_capped_side_when_inventory_allows() {
+        let cfg = LpCfg {
+            inventory_cap_lots: 20,
+            ..LpCfg::default()
+        };
+        let mut lp = Lp::new(1, &cfg, false);
+        lp.inventory = 10; // 10 + 15 > 20: no bids at first
+        let out = lp.observe(&Obs::Price(10_000));
+        assert_eq!(out.len(), 2);
+        // A regular trader buys 5 from an LP ask the LP knows about: inventory 5, so a full bid
+        // ladder (15) fits again and comes back around the same center.
+        let ack = ev(EventKind::Accepted {
+            order_id: 1,
+            agent: 1,
+            side: Side::Sell,
+            px: 10_001,
+            qty: 10,
+            tif: Tif::Gtc,
+        });
+        lp.observe(&Obs::Market(vec![ack].into()));
+        let fill = ev(EventKind::Fill {
+            maker_order: 1,
+            maker_agent: 1,
+            taker_order: 9,
+            taker_agent: 7,
+            taker_side: Side::Buy,
+            px: 10_001,
+            qty: 5,
+            maker_remaining: 5,
+        });
+        let out = lp.observe(&Obs::Market(vec![fill].into()));
+        assert_eq!(
+            out,
+            vec![
+                new_order(Side::Sell, 10_001, 5, Tif::Gtc, 0), // the refill
+                new_order(Side::Buy, 9_999, 10, Tif::Gtc, 0),
+                new_order(Side::Buy, 9_998, 5, Tif::Gtc, 0),
+            ]
         );
     }
 
