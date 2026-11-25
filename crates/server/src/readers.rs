@@ -857,6 +857,7 @@ fn snapshot(f: &Frame, sb: &StandbyStats, lg: &LogStatus, smp: &Sampler, tel: &T
             "block_ms": spec.block_ms,
             "seed": spec.seed,
             "speed": spec.speed_milli as f64 / 1000.0,
+            "crowd": spec.crowd,
         },
         "run": {
             "id": f.run_id,

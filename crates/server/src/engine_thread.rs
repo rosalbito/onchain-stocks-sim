@@ -63,6 +63,9 @@ pub struct StartSpec {
     pub seed: u64,
     /// Playback speed in thousandths (market).
     pub speed_milli: u64,
+    /// Market runs with the demo crowd: the same three roles, more of each
+    /// (`Scenario::with_crowd`). Off is the model the talk's numbers come from.
+    pub crowd: bool,
 }
 
 impl Default for StartSpec {
@@ -75,6 +78,7 @@ impl Default for StartSpec {
             block_ms: 0,
             seed: 1,
             speed_milli: 1_000,
+            crowd: true,
         }
     }
 }
@@ -325,6 +329,9 @@ fn hash_bytes(hex: &str) -> [u8; 64] {
 fn scenario_cfg(spec: &StartSpec) -> Scenario {
     let mut cfg =
         Scenario::from_toml(SCENARIOS[spec.scenario as usize].1).expect("embedded scenario");
+    if spec.crowd {
+        cfg = cfg.with_crowd();
+    }
     cfg.sequencer.rule = spec.rule;
     cfg.sequencer.block_ms = spec.block_ms;
     // The headline PGA bid (DECISIONS 77): the snipers together bid 0.3 of the prize, split

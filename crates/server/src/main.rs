@@ -43,6 +43,9 @@ struct Args {
     /// Block length B in ms for --start.
     #[arg(long, default_value_t = 0)]
     block_ms: u64,
+    /// Market runs without the demo crowd: one LP and one regular trader, the talk's model.
+    #[arg(long)]
+    no_crowd: bool,
     /// Logs go to <out>/live/.
     #[arg(long, default_value = "out")]
     out: PathBuf,
@@ -88,6 +91,7 @@ fn main() -> ExitCode {
         block_ms: args.block_ms,
         seed: args.seed,
         speed_milli: (args.speed * 1000.0).round() as u64,
+        crowd: !args.no_crowd,
     });
     if cfg!(debug_assertions) {
         eprintln!("note: debug build; use --release for the demo");
