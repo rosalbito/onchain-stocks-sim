@@ -21,6 +21,9 @@ use crate::price::{next_arrival, secs_to_ns, PriceFeed, Window};
 use crate::rng::{Purpose, Rng, FEED_ID};
 use crate::sequencer::{Accepted, Sequencer};
 
+mod live;
+pub use live::{config_records, replay, replay_check, Control, Live};
+
 #[derive(Debug, Clone)]
 enum Ev {
     /// The opening price at t = 0.
@@ -43,6 +46,8 @@ enum Ev {
     BlockClose(u64),
     Arrival {
         idx: usize,
+        /// Arrivals scheduled before a live load change are dropped (see `Sim::control`).
+        gen: u64,
     },
 }
 
@@ -114,6 +119,8 @@ pub struct Counts {
     pub ticks: u64,
     pub news: u64,
     pub cancels: u64,
+    /// Logged live control changes (`Config` records).
+    pub configs: u64,
     pub fills: u64,
     pub volume_lots: u64,
     /// Sum of px × qty over fills, in tick·lots.
@@ -190,11 +197,19 @@ struct Sim {
     reopen: Option<(i64, i64)>,
     counts: Counts,
     fills: FillsHasher,
+    events: Vec<Event>,
     market_batch: Vec<Event>,
     classes: BTreeMap<AgentId, AccountClass>,
     take_at_fill: BTreeMap<AccountClass, i128>,
+    /// For the live dashboard: the fill-time gain of each (buyer class, seller class) pair, in
+    /// tick·lots, and the fees each class paid (taker, priority), in cash units.
+    pair_take: BTreeMap<(AccountClass, AccountClass), i128>,
+    fees_paid: BTreeMap<AccountClass, (i128, i128)>,
     path: Vec<(u64, i64)>,
     decided: Vec<u64>,
+    /// Live load multiplier on the regular traders' arrival rate (1 unless changed live).
+    load: u32,
+    arrival_gen: u64,
 }
 
 /// Run a scenario with a seed. Fails only if the ledger does not balance.
@@ -206,7 +221,8 @@ pub fn run(cfg: &Scenario, seed: u64) -> Result<RunResult, String> {
 pub fn run_with(cfg: &Scenario, seed: u64, opts: &RunOpts) -> Result<RunResult, String> {
     cfg.validate()?;
     let mut sim = Sim::new(cfg, seed);
-    sim.run();
+    sim.start();
+    sim.advance_to(sim.end_ns);
     sim.finish(seed, opts)
 }
 
@@ -272,6 +288,8 @@ impl Sim {
             races: RaceTracker::new(cfg.sniper.theta_ticks, classes.clone()),
             classes,
             take_at_fill: AccountClass::ALL.iter().map(|&c| (c, 0)).collect(),
+            pair_take: BTreeMap::new(),
+            fees_paid: BTreeMap::new(),
             agents,
             window: feed.window(),
             last_visible_px: cfg.price.start_px_ticks,
@@ -279,9 +297,12 @@ impl Sim {
             reopen: None,
             counts: Counts::default(),
             fills: FillsHasher::default(),
+            events: Vec::new(),
             market_batch: Vec::new(),
             path: Vec::new(),
             decided: Vec::new(),
+            load: 1,
+            arrival_gen: 0,
         }
     }
 
@@ -298,7 +319,8 @@ impl Sim {
         self.window.is_some_and(|w| w.hidden(t))
     }
 
-    fn run(&mut self) {
+    /// Schedule the run's first events.
+    fn start(&mut self) {
         self.push(0, Ev::Start);
         if let Some(t) = self.feed.next_step_time(0) {
             self.push(t, Ev::Step);
@@ -318,14 +340,81 @@ impl Sim {
                 self.schedule_arrival(idx, 0);
             }
         }
+    }
 
-        while let Some(item) = self.heap.pop() {
-            if item.t > self.end_ns {
-                break;
-            }
+    /// Handle every event at or before `t` (capped at the end of the run), in `(time, tiebreak)`
+    /// order. Advancing in several steps handles exactly what one step to the same time does.
+    fn advance_to(&mut self, t: u64) {
+        let t = t.min(self.end_ns);
+        while self.heap.peek().is_some_and(|item| item.t <= t) {
+            let item = self.heap.pop().expect("peeked");
             self.now = item.t;
             self.handle(item.ev);
         }
+    }
+
+    /// Apply a live control change now: log it as a `Config` record, then change the setting.
+    /// A replay applies the same records at the same times (after every event at or before
+    /// `t_ns`), so it reproduces the run exactly.
+    fn control(&mut self, c: Control) -> LogRecord {
+        let now = self.now;
+        let (param, value) = c.encode();
+        self.process(
+            LogRecord {
+                seq: 0,
+                t_ns: now,
+                block: self.sequencer.block_at(now),
+                agent: FEED_ID,
+                kind: MsgKind::Config { param, value },
+            },
+            now,
+        );
+        let rec = *self.records.last().expect("just logged");
+        match c {
+            Control::Rule(rule) => {
+                self.sequencer.set_rule(rule);
+                let pga = rule == OrderingRule::Pga;
+                for a in &mut self.agents {
+                    match &mut a.role {
+                        Role::Lp(lp) => lp.set_pga(pga),
+                        Role::Sniper(s) => s.set_pga(pga),
+                        Role::Regular(_) => {}
+                    }
+                }
+            }
+            Control::BlockMs(b) => {
+                // Open blocks close now; later arrivals go into blocks of the new length.
+                for (block, msgs) in self.sequencer.set_block_ms(now, b) {
+                    for p in msgs {
+                        self.process(
+                            LogRecord {
+                                seq: 0,
+                                t_ns: p.t_ns,
+                                block,
+                                agent: p.agent,
+                                kind: p.kind,
+                            },
+                            p.decided_ns,
+                        );
+                    }
+                    self.counts.blocks += 1;
+                }
+                self.flush_market_data();
+            }
+            Control::Load(m) => {
+                // Poisson arrivals are memoryless, so redrawing each trader's next arrival from
+                // now at the new rate is exact; the arrivals already queued are dropped.
+                self.load = m.max(1);
+                self.arrival_gen += 1;
+                for idx in 0..self.agents.len() {
+                    if matches!(self.agents[idx].role, Role::Regular(_)) {
+                        self.schedule_arrival(idx, now);
+                    }
+                }
+            }
+            Control::Speed(_) | Control::Stop => {}
+        }
+        rec
     }
 
     fn handle(&mut self, ev: Ev) {
@@ -406,6 +495,10 @@ impl Sim {
                 }
             }
             Ev::BlockClose(block) => {
+                // A live change of B already sealed this block.
+                if !self.sequencer.is_open(block) {
+                    return;
+                }
                 for p in self.sequencer.seal(block) {
                     self.process(
                         LogRecord {
@@ -421,7 +514,10 @@ impl Sim {
                 self.counts.blocks += 1;
                 self.flush_market_data();
             }
-            Ev::Arrival { idx } => {
+            Ev::Arrival { idx, gen } => {
+                if gen != self.arrival_gen {
+                    return;
+                }
                 let (bb, ba) = (
                     self.engine.best_bid().map(|b| b.0),
                     self.engine.best_ask().map(|a| a.0),
@@ -452,18 +548,20 @@ impl Sim {
     fn schedule_arrival(&mut self, idx: usize, from: u64) {
         let window = self.window;
         let end = self.end_ns;
+        let (load, gen) = (self.load as f64, self.arrival_gen);
         let a = &mut self.agents[idx];
         let Role::Regular(r) = &a.role else {
             unreachable!()
         };
-        let (weekday, weekend) = (r.rate_per_s(false), r.rate_per_s(true));
+        // × 1.0 is exact, so a run without a live load change draws the same arrivals.
+        let (weekday, weekend) = (r.rate_per_s(false) * load, r.rate_per_s(true) * load);
         let next = next_arrival(&mut a.act, from, end, |t| match window {
             Some(w) if t < w.close_ns => (weekday, w.close_ns),
             Some(w) if t < w.reopen_ns => (weekend, w.reopen_ns),
             _ => (weekday, u64::MAX),
         });
         if let Some(t) = next {
-            self.push(t, Ev::Arrival { idx });
+            self.push(t, Ev::Arrival { idx, gen });
         }
     }
 
@@ -531,7 +629,16 @@ impl Sim {
         self.records.push(rec);
         self.decided.push(decided);
         self.ledger.on_included(&rec);
-        let events = self.engine.on_message(&rec);
+        let fee = rec.kind.priority_fee() as i128;
+        if fee > 0 {
+            self.fees_paid
+                .entry(self.classes[&rec.agent])
+                .or_default()
+                .1 += fee;
+        }
+        // One reused event buffer: the engine allocates nothing per message for its output.
+        let mut events = std::mem::take(&mut self.events);
+        self.engine.on_message_into(&rec, &mut events);
         self.ledger.on_events(&events);
         self.races.on_record(&rec, &events);
 
@@ -541,6 +648,7 @@ impl Sim {
             MsgKind::Tick { .. } => c.ticks += 1,
             MsgKind::New { .. } => c.news += 1,
             MsgKind::Cancel { .. } => c.cancels += 1,
+            MsgKind::Config { .. } => c.configs += 1,
         }
         for ev in &events {
             self.fills.update(ev.seq, &ev.kind);
@@ -563,12 +671,20 @@ impl Sim {
                     let gain = (self.feed.px() - px) as i128 * qty as i128;
                     *self.take_at_fill.get_mut(&self.classes[&buyer]).unwrap() += gain;
                     *self.take_at_fill.get_mut(&self.classes[&seller]).unwrap() -= gain;
+                    let pair = (self.classes[&buyer], self.classes[&seller]);
+                    *self.pair_take.entry(pair).or_default() += gain;
+                    let taker_fee = px as i128 * qty as i128 * self.cfg.fees.taker_fee_bps as i128;
+                    self.fees_paid
+                        .entry(self.classes[&taker_agent])
+                        .or_default()
+                        .0 += taker_fee;
                 }
                 EventKind::CancelMissed { .. } => c.cancel_missed += 1,
                 _ => {}
             }
         }
-        self.market_batch.extend(events);
+        self.market_batch.extend_from_slice(&events);
+        self.events = events;
     }
 
     /// Deliver the market data of the block just processed to every agent that watches it.
