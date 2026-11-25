@@ -400,9 +400,9 @@ pub fn measure(inp: &MeasureInput) -> Metrics {
         if fee > 0 {
             m.priority_fees += fee;
             let c = class(rec.agent);
-            for h in 0..NH {
-                m.class_pnl[h][ci(c)] -= fee;
-                m.class_pnl[h][ci(AccountClass::Chain)] += fee;
+            for row in &mut m.class_pnl {
+                row[ci(c)] -= fee;
+                row[ci(AccountClass::Chain)] += fee;
             }
             if c == AccountClass::Sniper && in_window(t) {
                 window_pnl -= fee;
@@ -446,9 +446,9 @@ pub fn measure(inp: &MeasureInput) -> Metrics {
                     // Taker fee: taker → protocol.
                     let tfee = px as i128 * q * inp.taker_fee_bps as i128;
                     m.taker_fees += tfee;
-                    for h in 0..NH {
-                        m.class_pnl[h][ci(tc)] -= tfee;
-                        m.class_pnl[h][ci(AccountClass::Protocol)] += tfee;
+                    for row in &mut m.class_pnl {
+                        row[ci(tc)] -= tfee;
+                        row[ci(AccountClass::Protocol)] += tfee;
                     }
                     // LP effective and realized half-spread. s = +1 when the LP sold.
                     for (lp_is_taker, c) in [(false, mc), (true, tc)] {
