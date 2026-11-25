@@ -7,7 +7,11 @@ use std::collections::{BTreeMap, BinaryHeap};
 use std::rc::Rc;
 
 use engine::{AgentId, Engine, Event, EventKind, LogRecord, MsgKind};
-use metrics::{zero_sum_check, AccountClass, ClassPnl, Race, RaceStats, RaceTracker};
+use metrics::measure::DEFAULT_MONDAY_WINDOW_NS;
+use metrics::{
+    measure, zero_sum_check, AccountClass, ClassPnl, MeasureInput, Metrics, PricePath, Race,
+    RaceStats, RaceTracker, Weekend,
+};
 
 use crate::agents::{Lp, Obs, Regular, Sniper};
 use crate::config::{Latency, OrderingRule, Scenario};
@@ -33,6 +37,8 @@ enum Ev {
     Submit {
         idx: usize,
         kind: MsgKind,
+        /// When the agent decided to send it.
+        decided: u64,
     },
     BlockClose(u64),
     Arrival {
@@ -142,6 +148,27 @@ pub struct RunResult {
     /// (a markout with horizon 0), in tick·lots, before fees. Sums to zero across classes.
     /// The sniper entry is the stale-quote prize the snipers captured.
     pub take_at_fill: BTreeMap<AccountClass, i128>,
+    /// The true Nasdaq price at every change, hidden or not.
+    pub path: PricePath,
+    /// Each record's decision time, aligned with `records`.
+    pub decided_ns: Vec<u64>,
+    /// Every market metric of spec section 10.
+    pub metrics: Metrics,
+}
+
+/// Measurement options that are not part of the scenario (so they don't change the log).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct RunOpts {
+    /// The Monday-open window W.
+    pub monday_window_ns: u64,
+}
+
+impl Default for RunOpts {
+    fn default() -> Self {
+        Self {
+            monday_window_ns: DEFAULT_MONDAY_WINDOW_NS,
+        }
+    }
 }
 
 struct Sim {
@@ -166,14 +193,21 @@ struct Sim {
     market_batch: Vec<Event>,
     classes: BTreeMap<AgentId, AccountClass>,
     take_at_fill: BTreeMap<AccountClass, i128>,
+    path: Vec<(u64, i64)>,
+    decided: Vec<u64>,
 }
 
 /// Run a scenario with a seed. Fails only if the ledger does not balance.
 pub fn run(cfg: &Scenario, seed: u64) -> Result<RunResult, String> {
+    run_with(cfg, seed, &RunOpts::default())
+}
+
+/// [`run`] with measurement options.
+pub fn run_with(cfg: &Scenario, seed: u64, opts: &RunOpts) -> Result<RunResult, String> {
     cfg.validate()?;
     let mut sim = Sim::new(cfg, seed);
     sim.run();
-    sim.finish(seed)
+    sim.finish(seed, opts)
 }
 
 impl Sim {
@@ -246,6 +280,8 @@ impl Sim {
             counts: Counts::default(),
             fills: FillsHasher::default(),
             market_batch: Vec::new(),
+            path: Vec::new(),
+            decided: Vec::new(),
         }
     }
 
@@ -296,12 +332,14 @@ impl Sim {
         let now = self.now;
         match ev {
             Ev::Start => {
+                self.path.push((now, self.feed.px()));
                 if !self.hidden(now) {
                     self.emit_tick(self.feed.px());
                 }
             }
             Ev::Step => {
                 let px = self.feed.step();
+                self.path.push((now, px));
                 if !self.hidden(now) {
                     self.emit_tick(px);
                 }
@@ -311,6 +349,7 @@ impl Sim {
             }
             Ev::Jump => {
                 let px = self.feed.jump();
+                self.path.push((now, px));
                 if !self.hidden(now) {
                     self.emit_tick(px);
                 }
@@ -320,6 +359,7 @@ impl Sim {
             }
             Ev::ScheduledJump(ticks) => {
                 let px = self.feed.shift(ticks);
+                self.path.push((now, px));
                 if !self.hidden(now) {
                     self.emit_tick(px);
                 }
@@ -338,20 +378,23 @@ impl Sim {
                 self.emit_tick(px);
             }
             Ev::Observe { idx, obs } => self.observe(idx, obs),
-            Ev::Submit { idx, kind } => {
+            Ev::Submit { idx, kind, decided } => {
                 let agent = self.agents[idx].id;
                 if let MsgKind::Cancel { order_id, .. } = kind {
                     self.races.on_cancel_arrival(order_id, now);
                 }
-                match self.sequencer.accept(now, agent, kind) {
+                match self.sequencer.accept(now, decided, agent, kind) {
                     Accepted::Now { block } => {
-                        self.process(LogRecord {
-                            seq: 0,
-                            t_ns: now,
-                            block,
-                            agent,
-                            kind,
-                        });
+                        self.process(
+                            LogRecord {
+                                seq: 0,
+                                t_ns: now,
+                                block,
+                                agent,
+                                kind,
+                            },
+                            decided,
+                        );
                         self.counts.blocks += 1;
                         self.flush_market_data();
                     }
@@ -364,13 +407,16 @@ impl Sim {
             }
             Ev::BlockClose(block) => {
                 for p in self.sequencer.seal(block) {
-                    self.process(LogRecord {
-                        seq: 0,
-                        t_ns: p.t_ns,
-                        block,
-                        agent: p.agent,
-                        kind: p.kind,
-                    });
+                    self.process(
+                        LogRecord {
+                            seq: 0,
+                            t_ns: p.t_ns,
+                            block,
+                            agent: p.agent,
+                            kind: p.kind,
+                        },
+                        p.decided_ns,
+                    );
                 }
                 self.counts.blocks += 1;
                 self.flush_market_data();
@@ -389,7 +435,14 @@ impl Sim {
                 // traders' draws are the same under every ordering rule.
                 let t = a.send_at(now);
                 if let Some(kind) = msg {
-                    self.push(t, Ev::Submit { idx, kind });
+                    self.push(
+                        t,
+                        Ev::Submit {
+                            idx,
+                            kind,
+                            decided: now,
+                        },
+                    );
                 }
                 self.schedule_arrival(idx, now);
             }
@@ -429,7 +482,14 @@ impl Sim {
         // One send-latency draw per reaction: a batch travels together and keeps its order.
         let t = a.send_at(now);
         for kind in msgs {
-            self.push(t, Ev::Submit { idx, kind });
+            self.push(
+                t,
+                Ev::Submit {
+                    idx,
+                    kind,
+                    decided: now,
+                },
+            );
         }
     }
 
@@ -437,13 +497,16 @@ impl Sim {
     fn emit_tick(&mut self, px: i64) {
         self.last_visible_px = px;
         let block = self.sequencer.block_at(self.now);
-        self.process(LogRecord {
-            seq: 0,
-            t_ns: self.now,
-            block,
-            agent: FEED_ID,
-            kind: MsgKind::Tick { px_ticks: px },
-        });
+        self.process(
+            LogRecord {
+                seq: 0,
+                t_ns: self.now,
+                block,
+                agent: FEED_ID,
+                kind: MsgKind::Tick { px_ticks: px },
+            },
+            self.now,
+        );
         // The echo carries nothing agents need from market data.
         self.market_batch.clear();
         for idx in 0..self.agents.len() {
@@ -462,10 +525,11 @@ impl Sim {
 
     /// Sequence one record: assign the next `seq`, append to the log, charge inclusion fees,
     /// match, book the fills, and count races.
-    fn process(&mut self, mut rec: LogRecord) {
+    fn process(&mut self, mut rec: LogRecord, decided: u64) {
         self.seq += 1;
         rec.seq = self.seq;
         self.records.push(rec);
+        self.decided.push(decided);
         self.ledger.on_included(&rec);
         let events = self.engine.on_message(&rec);
         self.ledger.on_events(&events);
@@ -527,9 +591,29 @@ impl Sim {
         }
     }
 
-    fn finish(self, seed: u64) -> Result<RunResult, String> {
+    fn finish(self, seed: u64, opts: &RunOpts) -> Result<RunResult, String> {
         let final_px = self.feed.px();
         let pnl = zero_sum_check(&self.ledger.balances(), final_px).map_err(|e| e.to_string())?;
+        let path = PricePath::new(self.path);
+        let metrics = measure(&MeasureInput {
+            records: &self.records,
+            decided_ns: &self.decided,
+            classes: &self.classes,
+            path: &path,
+            block_ns: self.cfg.sequencer.block_ms * 1_000_000,
+            end_ns: self.end_ns,
+            theta_ticks: self.cfg.sniper.theta_ticks,
+            taker_fee_bps: self.cfg.fees.taker_fee_bps,
+            weekend: self.window.map(|w| Weekend {
+                close_ns: w.close_ns,
+                reopen_ns: w.reopen_ns,
+            }),
+            monday_window_ns: opts.monday_window_ns,
+        });
+        let class_sum: i128 = metrics.class_pnl.iter().flatten().sum();
+        if class_sum != 0 {
+            return Err(format!("metrics PnL does not balance: {class_sum}"));
+        }
         let mut counts = self.counts;
         counts.unsequenced = self.sequencer.waiting() as u64;
         let file = LogFile {
@@ -558,6 +642,9 @@ impl Sim {
             priority_fees: self.ledger.priority_fees,
             agents: self.classes,
             take_at_fill: self.take_at_fill,
+            path,
+            decided_ns: self.decided,
+            metrics,
         })
     }
 }
