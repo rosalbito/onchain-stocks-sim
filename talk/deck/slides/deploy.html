@@ -1,0 +1,107 @@
+<section id="deploy" style="gap:32px">
+<div class="head">
+<p class="eyebrow">So how do you deploy it? · two machines × 20 cores</p>
+<h2>One book, one core. Scale by adding books.</h2>
+</div>
+<svg viewBox="0 0 1664 400" width="1664" height="400" role="img" aria-label="Deployment with many books. Traders' bots send orders to a load balancer, which spreads them over stateless gateways. The gateways check each order and route it by ticker, never balanced, to machine A, where each of 15 books (AAPL, NVDA, TSLA and so on) has its own reserved core running that book's sequencer and matching; the remaining cores are shared by log writers, the network edge and the OS. Every record is copied to machine B, which runs a standby of each book ready to take over." style="display:block;flex-shrink:0;font-family:'Geist',Arial,sans-serif">
+<defs>
+<marker id="dah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="9" markerHeight="9" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#a3a1a9"/></marker>
+<marker id="dahv" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="9" markerHeight="9" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#7b61ff"/></marker>
+</defs>
+<rect x="0" y="78" width="204" height="100" rx="2" fill="#0b0b0f" stroke="#2a2a32"/>
+<text x="20" y="120" font-size="26" font-weight="500" fill="#edebe6">Traders’ bots</text>
+<text x="20" y="154" font-size="22" fill="#b9b7be">next door</text>
+<line x1="208" y1="128" x2="246" y2="128" stroke="#a3a1a9" stroke-width="2" marker-end="url(#dah)"/>
+<rect x="250" y="96" width="210" height="64" rx="2" fill="#0b0b0f" stroke="#2a2a32"/>
+<text x="268" y="137" font-size="24" font-weight="500" fill="#edebe6">Load balancer</text>
+<line x1="355" y1="160" x2="355" y2="192" stroke="#a3a1a9" stroke-width="2" marker-end="url(#dah)"/>
+<rect x="250" y="196" width="210" height="120" rx="2" fill="#0b0b0f" stroke="#2a2a32"/>
+<text x="268" y="236" font-size="26" font-weight="500" fill="#edebe6">Gateways ×N</text>
+<text x="268" y="268" font-size="22" fill="#b9b7be">check each order,</text>
+<text x="268" y="296" font-size="22" fill="#b9b7be">route by ticker</text>
+<text x="250" y="356" font-size="20" fill="#d8d0ff">+1 hop each:</text>
+<text x="250" y="384" font-size="20" fill="#d8d0ff">µs, same region</text>
+<line x1="464" y1="256" x2="586" y2="256" stroke="#7b61ff" stroke-width="2" marker-end="url(#dahv)"/>
+<text x="525" y="244" font-size="18" fill="#d8d0ff" text-anchor="middle" font-family="'Geist Mono',monospace">by ticker</text>
+<rect x="590" y="0" width="520" height="400" rx="2" fill="#120f24" stroke="#7b61ff" stroke-width="2"/>
+<text x="610" y="38" font-size="26" font-weight="500" fill="#d8d0ff">Machine A · 20 cores</text>
+<text x="610" y="68" font-size="20" fill="#b9b7be">1 core = 1 book: its sequencer + matching</text>
+<rect x="610" y="84" width="88" height="64" rx="2" fill="#0c0a1a" stroke="#7b61ff" stroke-width="2"/>
+<text x="654" y="124" font-size="22" fill="#edebe6" text-anchor="middle" font-family="'Geist Mono',monospace">AAPL</text>
+<rect x="708" y="84" width="88" height="64" rx="2" fill="#0c0a1a" stroke="#7b61ff" stroke-width="2"/>
+<text x="752" y="124" font-size="22" fill="#edebe6" text-anchor="middle" font-family="'Geist Mono',monospace">NVDA</text>
+<rect x="806" y="84" width="88" height="64" rx="2" fill="#0c0a1a" stroke="#7b61ff" stroke-width="2"/>
+<text x="850" y="124" font-size="22" fill="#edebe6" text-anchor="middle" font-family="'Geist Mono',monospace">TSLA</text>
+<rect x="904" y="84" width="88" height="64" rx="2" fill="#0c0a1a" stroke="#7b61ff" stroke-width="2"/>
+<text x="948" y="124" font-size="22" fill="#edebe6" text-anchor="middle" font-family="'Geist Mono',monospace">MSFT</text>
+<rect x="1002" y="84" width="88" height="64" rx="2" fill="#0c0a1a" stroke="#7b61ff" stroke-width="2"/>
+<text x="1046" y="124" font-size="22" fill="#edebe6" text-anchor="middle" font-family="'Geist Mono',monospace">AMZN</text>
+<rect x="610" y="158" width="88" height="64" rx="2" fill="#0c0a1a" stroke="#7b61ff" stroke-width="2"/>
+<text x="654" y="198" font-size="22" fill="#edebe6" text-anchor="middle" font-family="'Geist Mono',monospace">GOOGL</text>
+<rect x="708" y="158" width="88" height="64" rx="2" fill="#0c0a1a" stroke="#7b61ff" stroke-width="2"/>
+<text x="752" y="198" font-size="22" fill="#edebe6" text-anchor="middle" font-family="'Geist Mono',monospace">META</text>
+<rect x="806" y="158" width="88" height="64" rx="2" fill="#0c0a1a" stroke="#7b61ff" stroke-width="2"/>
+<text x="850" y="198" font-size="22" fill="#edebe6" text-anchor="middle" font-family="'Geist Mono',monospace">NFLX</text>
+<rect x="904" y="158" width="88" height="64" rx="2" fill="#0c0a1a" stroke="#7b61ff" stroke-width="2"/>
+<text x="948" y="198" font-size="22" fill="#edebe6" text-anchor="middle" font-family="'Geist Mono',monospace">AMD</text>
+<rect x="1002" y="158" width="88" height="64" rx="2" fill="#0c0a1a" stroke="#7b61ff" stroke-width="2"/>
+<text x="1046" y="198" font-size="22" fill="#edebe6" text-anchor="middle" font-family="'Geist Mono',monospace">COIN</text>
+<rect x="610" y="232" width="88" height="64" rx="2" fill="#0c0a1a" stroke="#7b61ff" stroke-width="2"/>
+<text x="654" y="272" font-size="22" fill="#edebe6" text-anchor="middle" font-family="'Geist Mono',monospace">PLTR</text>
+<rect x="708" y="232" width="88" height="64" rx="2" fill="#0c0a1a" stroke="#7b61ff" stroke-width="2"/>
+<text x="752" y="272" font-size="22" fill="#edebe6" text-anchor="middle" font-family="'Geist Mono',monospace">AVGO</text>
+<rect x="806" y="232" width="88" height="64" rx="2" fill="#0c0a1a" stroke="#7b61ff" stroke-width="2"/>
+<text x="850" y="272" font-size="22" fill="#edebe6" text-anchor="middle" font-family="'Geist Mono',monospace">HOOD</text>
+<rect x="904" y="232" width="88" height="64" rx="2" fill="#0c0a1a" stroke="#7b61ff" stroke-width="2"/>
+<text x="948" y="272" font-size="22" fill="#edebe6" text-anchor="middle" font-family="'Geist Mono',monospace">MSTR</text>
+<rect x="1002" y="232" width="88" height="64" rx="2" fill="#0c0a1a" stroke="#7b61ff" stroke-width="2"/>
+<text x="1046" y="272" font-size="22" fill="#edebe6" text-anchor="middle" font-family="'Geist Mono',monospace">…</text>
+<rect x="610" y="306" width="480" height="74" rx="2" fill="#0b0b0f" stroke="#3a3a43" stroke-dasharray="6 6"/>
+<text x="850" y="351" font-size="22" fill="#b9b7be" text-anchor="middle">shared: log writers · network edge · OS</text>
+<line x1="1114" y1="190" x2="1176" y2="190" stroke="#a3a1a9" stroke-width="2" marker-end="url(#dah)"/>
+<text x="1145" y="178" font-size="18" fill="#a3a1a9" text-anchor="middle" font-family="'Geist Mono',monospace">every</text>
+<text x="1145" y="216" font-size="18" fill="#a3a1a9" text-anchor="middle" font-family="'Geist Mono',monospace">record</text>
+<rect x="1180" y="0" width="484" height="400" rx="2" fill="#0b0b0f" stroke="#3a3a43"/>
+<text x="1202" y="38" font-size="26" font-weight="500" fill="#edebe6">Machine B · 20 cores</text>
+<text x="1202" y="68" font-size="20" fill="#b9b7be">a standby per book, ready to take over</text>
+<rect x="1202" y="84" width="80" height="64" rx="2" fill="#0e0e12" stroke="#3a3a43"/>
+<text x="1242" y="124" font-size="22" fill="#a3a1a9" text-anchor="middle" font-family="'Geist Mono',monospace">AAPL</text>
+<rect x="1292" y="84" width="80" height="64" rx="2" fill="#0e0e12" stroke="#3a3a43"/>
+<text x="1332" y="124" font-size="22" fill="#a3a1a9" text-anchor="middle" font-family="'Geist Mono',monospace">NVDA</text>
+<rect x="1382" y="84" width="80" height="64" rx="2" fill="#0e0e12" stroke="#3a3a43"/>
+<text x="1422" y="124" font-size="22" fill="#a3a1a9" text-anchor="middle" font-family="'Geist Mono',monospace">TSLA</text>
+<rect x="1472" y="84" width="80" height="64" rx="2" fill="#0e0e12" stroke="#3a3a43"/>
+<text x="1512" y="124" font-size="22" fill="#a3a1a9" text-anchor="middle" font-family="'Geist Mono',monospace">MSFT</text>
+<rect x="1562" y="84" width="80" height="64" rx="2" fill="#0e0e12" stroke="#3a3a43"/>
+<text x="1602" y="124" font-size="22" fill="#a3a1a9" text-anchor="middle" font-family="'Geist Mono',monospace">AMZN</text>
+<rect x="1202" y="158" width="80" height="64" rx="2" fill="#0e0e12" stroke="#3a3a43"/>
+<text x="1242" y="198" font-size="22" fill="#a3a1a9" text-anchor="middle" font-family="'Geist Mono',monospace">GOOGL</text>
+<rect x="1292" y="158" width="80" height="64" rx="2" fill="#0e0e12" stroke="#3a3a43"/>
+<text x="1332" y="198" font-size="22" fill="#a3a1a9" text-anchor="middle" font-family="'Geist Mono',monospace">META</text>
+<rect x="1382" y="158" width="80" height="64" rx="2" fill="#0e0e12" stroke="#3a3a43"/>
+<text x="1422" y="198" font-size="22" fill="#a3a1a9" text-anchor="middle" font-family="'Geist Mono',monospace">NFLX</text>
+<rect x="1472" y="158" width="80" height="64" rx="2" fill="#0e0e12" stroke="#3a3a43"/>
+<text x="1512" y="198" font-size="22" fill="#a3a1a9" text-anchor="middle" font-family="'Geist Mono',monospace">AMD</text>
+<rect x="1562" y="158" width="80" height="64" rx="2" fill="#0e0e12" stroke="#3a3a43"/>
+<text x="1602" y="198" font-size="22" fill="#a3a1a9" text-anchor="middle" font-family="'Geist Mono',monospace">COIN</text>
+<rect x="1202" y="232" width="80" height="64" rx="2" fill="#0e0e12" stroke="#3a3a43"/>
+<text x="1242" y="272" font-size="22" fill="#a3a1a9" text-anchor="middle" font-family="'Geist Mono',monospace">PLTR</text>
+<rect x="1292" y="232" width="80" height="64" rx="2" fill="#0e0e12" stroke="#3a3a43"/>
+<text x="1332" y="272" font-size="22" fill="#a3a1a9" text-anchor="middle" font-family="'Geist Mono',monospace">AVGO</text>
+<rect x="1382" y="232" width="80" height="64" rx="2" fill="#0e0e12" stroke="#3a3a43"/>
+<text x="1422" y="272" font-size="22" fill="#a3a1a9" text-anchor="middle" font-family="'Geist Mono',monospace">HOOD</text>
+<rect x="1472" y="232" width="80" height="64" rx="2" fill="#0e0e12" stroke="#3a3a43"/>
+<text x="1512" y="272" font-size="22" fill="#a3a1a9" text-anchor="middle" font-family="'Geist Mono',monospace">MSTR</text>
+<rect x="1562" y="232" width="80" height="64" rx="2" fill="#0e0e12" stroke="#3a3a43"/>
+<text x="1602" y="272" font-size="22" fill="#a3a1a9" text-anchor="middle" font-family="'Geist Mono',monospace">…</text>
+<rect x="1202" y="306" width="440" height="74" rx="2" fill="#0b0b0f" stroke="#3a3a43" stroke-dasharray="6 6"/>
+<text x="1422" y="351" font-size="22" fill="#b9b7be" text-anchor="middle">shared: log copy · OS</text>
+</svg>
+<div class="row" style="gap:48px">
+<p style="flex:1;font-size:24px;line-height:1.4"><b style="color:#edebe6">1 core per book.</b> 5.3–5.7M msgs/s flat out. A second core on the same book only adds a lock.</p>
+<p style="flex:1;font-size:24px;line-height:1.4"><b style="color:#edebe6">Helpers share cores.</b> Standby and log writer need most of a core each flat out; at real-market rates they idle.</p>
+<p style="flex:1;font-size:24px;line-height:1.4"><b style="color:#edebe6">Route, don’t balance.</b> The balancer only spreads load over gateways. Each order then goes to its ticker’s one core.</p>
+</div>
+<p class="small">Each hop in front adds microseconds inside one region; a block is 250 ms. 15 books a machine is illustrative, not a capacity plan we tested.</p>
+<aside>This answers the question the last few slides raise: with two machines of 20 cores, how do you lay it out? A book is one stock’s order book. Its matching is strictly sequential, so it lives on one thread, and the lock benchmark showed that adding a second thread to the same work only makes it slower. One core is plenty: one engine thread holds 5.3 to 5.7 million messages a second, which you will see live in the demo. So the way to use a big machine is many books, each on its own reserved core, the way an exchange runs many stocks. Each core runs that book’s sequencer and its matching, because in our design the sequencer is per book, on the same thread, so it scales with the books for free. The helpers, the standby and the log writer, need most of a core each flat out but are nearly idle at real-market rates, so they share the leftover cores with the network edge and the operating system. In front sit gateways: they take connections, check orders and route each one by ticker. A load balancer can spread traffic over the gateways, because they hold no state, but never over books: every AAPL order must reach the one AAPL core, or there is no single order of events. Each of those hops costs microseconds inside one region, nothing next to a 250 ms block, so add them when you need them, not before. The second machine buys fault tolerance, not speed: every record is copied there, and a standby for each book is ready to take over. One caveat for on-chain venues: the chain itself has one sequencer that orders every transaction for every book, so that shared step is the chain’s scaling problem, not the matching engine’s. And 15 books a machine is an illustration, not a capacity plan we tested on 20-core machines.</aside>
+</section>

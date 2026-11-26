@@ -1,0 +1,156 @@
+:root {
+  --bg: #050507;
+  --bg2: #0e0e12;
+  --deep: #0c0a1a;
+  --ink: #edebe6;
+  --ink2: #b9b7be;
+  --ink3: #a3a1a9;
+  --line: #2a2a32;
+  --line2: #3a3a43;
+  --accent: #7b61ff;
+  --accent-soft: #d8d0ff;
+  --stale: #1a1433;
+}
+
+body { font-family: 'Geist', Arial, sans-serif; color: #edebe6; }
+
+section {
+  background: #050507;
+  padding: 128px;
+  color: #edebe6;
+  font-family: 'Geist', Arial, sans-serif;
+  display: flex;
+  flex-direction: column;
+  gap: 48px;
+}
+section.alt { background: #0e0e12; }
+section.world { background: linear-gradient(to bottom, #050507 0%, #08080c 52%, #101016 60%, #07070a 72%, #050507 100%); }
+section.end { justify-content: flex-end; }
+
+/* the Eclipse from rosalbito.dev */
+.glow {
+  position: absolute; left: 260px; top: 470px; width: 1560px; height: 560px;
+  background: radial-gradient(ellipse at center, rgba(123, 97, 255, 0.34) 0%, rgba(123, 97, 255, 0) 65%);
+}
+.eclipse {
+  position: absolute; left: 1120px; top: 140px; width: 500px; height: 500px;
+  background: #030304;
+  box-shadow: 0 0 0 3px rgba(214, 205, 255, 0.75), 0 0 48px 10px rgba(123, 97, 255, 0.7), 0 0 160px 60px rgba(123, 97, 255, 0.26);
+}
+.eclipse.breathe { animation: breathe 7s ease-in-out infinite alternate; }
+@keyframes breathe {
+  from { box-shadow: 0 0 0 3px rgba(214, 205, 255, 0.75), 0 0 48px 10px rgba(123, 97, 255, 0.7), 0 0 160px 60px rgba(123, 97, 255, 0.26); }
+  to { box-shadow: 0 0 0 3px rgba(214, 205, 255, 0.9), 0 0 64px 14px rgba(123, 97, 255, 0.85), 0 0 160px 90px rgba(123, 97, 255, 0.34); }
+}
+.fog {
+  position: absolute; left: 0; top: 660px; width: 1920px; height: 420px;
+  background: linear-gradient(to bottom, rgba(5, 5, 7, 0) 0%, #0b0b10 35%, #060608 100%);
+}
+
+/* type scale: 120 / 72 / 44 / 32 / 24 */
+.eyebrow {
+  font-family: 'Geist Mono', 'Courier New', monospace;
+  font-size: 24px; letter-spacing: 0.2em; text-transform: uppercase; color: #a3a1a9;
+}
+h1 { font-size: 120px; font-weight: 300; letter-spacing: -0.025em; line-height: 1.0; color: #edebe6; }
+h2 { font-size: 72px; font-weight: 300; letter-spacing: -0.015em; line-height: 1.1; color: #edebe6; }
+h3 { font-size: 44px; font-weight: 400; line-height: 1.2; color: #edebe6; }
+p { font-size: 32px; line-height: 1.45; color: #b9b7be; }
+.lead { font-size: 44px; line-height: 1.3; font-weight: 300; color: #edebe6; }
+.small { font-size: 24px; line-height: 1.45; color: #a3a1a9; }
+.violet { color: #d8d0ff; }
+.mono { font-family: 'Geist Mono', 'Courier New', monospace; }
+.copy { width: 900px; display: flex; flex-direction: column; gap: 32px; }
+.head { display: flex; flex-direction: column; gap: 24px; }
+
+/* cards and rows */
+.row { display: flex; gap: 32px; }
+.card {
+  flex: 1; display: flex; flex-direction: column; gap: 16px;
+  padding: 40px; border: 1px solid #2a2a32; border-radius: 2px; background: #0b0b0f;
+}
+.card.on { border: 2px solid #7b61ff; background: #120f24; }
+.card .lbl {
+  font-family: 'Geist Mono', 'Courier New', monospace;
+  font-size: 24px; letter-spacing: 0.16em; text-transform: uppercase; color: #a3a1a9;
+}
+.card .name { font-size: 44px; font-weight: 400; line-height: 1.2; color: #edebe6; }
+.card .sub { font-size: 24px; line-height: 1.4; color: #b9b7be; }
+.chips { display: flex; flex-direction: column; gap: 12px; }
+.chip {
+  font-size: 24px; line-height: 1.3; color: #edebe6;
+  padding: 8px 16px; border: 1px solid #3a3a43; border-radius: 2px; background: #0e0e12;
+}
+.chip.on { border: 2px solid #7b61ff; background: #1a1433; }
+.arrow { width: 56px; height: 28px; background: #3a3a43; align-self: center; }
+
+/* big numbers */
+.stat { display: flex; align-items: center; gap: 48px; padding: 28px 0; border-top: 1px solid #2a2a32; }
+.stat .num { width: 720px; font-size: 96px; font-weight: 300; line-height: 1.1; color: #edebe6; font-variant-numeric: tabular-nums; }
+.stat .num.violet { color: #d8d0ff; }
+.stat .what { flex: 1; font-size: 32px; line-height: 1.4; color: #b9b7be; }
+
+/* order book */
+.race { display: flex; gap: 96px; }
+.book { width: 640px; display: flex; flex-direction: column; }
+.book .side { font-family: 'Geist Mono', 'Courier New', monospace; font-size: 24px; letter-spacing: 0.16em; text-transform: uppercase; color: #a3a1a9; padding: 12px 24px; }
+.lvl { display: flex; gap: 40px; padding: 14px 24px; border-bottom: 1px solid #2a2a32; }
+.lvl .px { width: 170px; font-family: 'Geist Mono', 'Courier New', monospace; font-size: 32px; color: #edebe6; }
+.lvl .qty { width: 60px; font-family: 'Geist Mono', 'Courier New', monospace; font-size: 32px; color: #b9b7be; text-align: right; }
+.lvl .who { flex: 1; font-size: 32px; color: #a3a1a9; }
+.lvl.stale { background: #1a1433; border: 2px solid #7b61ff; }
+.lvl.stale .who { color: #d8d0ff; }
+.mid { padding: 18px 24px; border-bottom: 1px solid #3a3a43; }
+.mid .px { font-family: 'Geist Mono', 'Courier New', monospace; font-size: 28px; color: #d8d0ff; }
+.steps { flex: 1; display: flex; flex-direction: column; gap: 28px; }
+.step { display: flex; flex-direction: column; gap: 4px; padding-left: 24px; border-left: 2px solid #3a3a43; }
+.step .t { font-family: 'Geist Mono', 'Courier New', monospace; font-size: 24px; color: #a3a1a9; }
+.step .what { font-size: 32px; line-height: 1.4; color: #edebe6; }
+.step.result { border-left: 2px solid #7b61ff; }
+.step.result .what { color: #d8d0ff; }
+
+/* tables */
+table { width: 100%; font-size: 28px; color: #b9b7be; font-family: 'Geist', Arial, sans-serif; }
+tr.hi { background: #1a1433; }
+
+/* bars (log scale) */
+.bars { display: flex; flex-direction: column; gap: 36px; }
+.bar-row { display: flex; align-items: center; gap: 32px; }
+.bar-row .bname { width: 420px; font-size: 32px; color: #edebe6; }
+.bar-row .bval { width: 260px; font-family: 'Geist Mono', 'Courier New', monospace; font-size: 32px; color: #b9b7be; text-align: right; }
+.bar { height: 40px; background: #3a3a43; border-radius: 2px; }
+.bar.on { background: #7b61ff; }
+.bar-row .bx { font-size: 44px; font-weight: 300; color: #edebe6; }
+
+/* architecture chain */
+.chain { display: flex; gap: 12px; align-items: stretch; }
+.node { width: 218px; display: flex; flex-direction: column; gap: 8px; padding: 24px 20px; border: 1px solid #2a2a32; border-radius: 2px; background: #0b0b0f; }
+.node.on { border: 2px solid #7b61ff; background: #120f24; }
+.node .nname { font-size: 28px; font-weight: 500; color: #edebe6; }
+.node .nsub { font-size: 24px; line-height: 1.35; color: #b9b7be; }
+.link { width: 28px; height: 16px; background: #3a3a43; align-self: center; }
+
+/* latency ladder */
+.ladder { position: relative; width: 1664px; height: 420px; }
+.band { position: absolute; top: 120px; height: 138px; border-radius: 2px; }
+.band.hft { left: 0; width: 589px; background: #111116; border: 1px solid #3a3a43; }
+.band.chain { left: 951px; width: 713px; background: #16122b; border: 2px solid #7b61ff; }
+.bandlbl { position: absolute; top: 134px; font-family: 'Geist Mono', 'Courier New', monospace; font-size: 24px; letter-spacing: 0.12em; text-transform: uppercase; }
+.axis { position: absolute; left: 0; top: 258px; width: 1664px; height: 3px; background: #6a6a73; }
+.dot { position: absolute; top: 250px; width: 18px; height: 18px; background: #b9b7be; }
+.dot.on { background: #7b61ff; }
+.tick { position: absolute; top: 274px; width: 120px; font-family: 'Geist Mono', 'Courier New', monospace; font-size: 24px; color: #a3a1a9; }
+.mark { position: absolute; font-size: 24px; line-height: 1.3; color: #edebe6; }
+.mark.up { top: 28px; }
+.mark.down { top: 330px; }
+
+/* takeaways */
+.take { display: flex; gap: 40px; padding: 32px 0; border-top: 1px solid #2a2a32; }
+.take .n { width: 80px; font-family: 'Geist Mono', 'Courier New', monospace; font-size: 32px; color: #d8d0ff; }
+.take .tt { flex: 1; font-size: 44px; font-weight: 300; line-height: 1.25; color: #edebe6; }
+
+/* motion */
+.rise { animation: rise 600ms ease-out both; animation-delay: calc(var(--i) * 120ms); }
+@keyframes rise { from { opacity: 0; transform: translateY(16px); } }
+.fragment { opacity: 0.12; transition: opacity 300ms ease-out; }
+.fragment.visible { opacity: 1; }

@@ -1,0 +1,66 @@
+<section id="prices">
+<div class="head">
+<p class="eyebrow">How the book tracks Nasdaq<br><br><br>&nbsp;&nbsp;</p>
+<h2>Two prices, and the bots in between</h2>
+</div>
+<svg viewBox="0 0 1664 500" width="1597" height="480" aria-label="Diagram. The Nasdaq price, which nobody on-chain sees directly, feeds two bots. The LP bot sees it 20 ms late; when it moves 1 tick or more it cancels all and posts a bid 1 tick below and an ask 1 tick above, 10 shares each, plus 5 shares each at 2 ticks. The sniper bot sees it 5 ms late, keeps a delayed copy of the book from market data, adds up every ask at or below price minus 1 tick and sends one immediate-or-cancel buy for that total. Both send orders to the on-chain book, which holds orders only; its price is the best bid and best ask, and the mid is their average. A regular trader who does not watch Nasdaq sends random immediate-or-cancel buys and sells of about 2 shares." style="display:block;flex-shrink:0;font-family:'Geist',Arial,sans-serif">
+<defs>
+<marker id="pa" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="9" markerHeight="9" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#a3a1a9"/></marker>
+<marker id="pav" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="9" markerHeight="9" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#7b61ff"/></marker>
+</defs>
+
+<!-- Nasdaq -->
+<rect x="0" y="170" width="260" height="160" rx="2" fill="#0b0b0f" stroke="#2a2a32"/>
+<text x="22" y="212" font-size="28" font-weight="500" fill="#edebe6">Nasdaq price</text>
+<text x="22" y="250" font-size="24" fill="#b9b7be">the “true” price</text>
+<text x="22" y="284" font-size="24" fill="#b9b7be">nobody on-chain</text>
+<text x="22" y="314" font-size="24" fill="#b9b7be">sees it directly</text>
+
+<!-- LP bot -->
+<rect x="400" y="0" width="640" height="200" rx="2" fill="#0b0b0f" stroke="#2a2a32"/>
+<text x="424" y="40" font-size="28" font-weight="500" fill="#edebe6">LP bot</text>
+<text x="424" y="78" font-size="24" fill="#d8d0ff">Sees the price 20 ms late</text>
+<text x="424" y="112" font-size="24" fill="#b9b7be">Moved ≥ 1 tick? Cancel all, then post:</text>
+<text x="424" y="146" font-size="24" fill="#b9b7be">bid 1 tick below, ask 1 tick above, 10 each</text>
+<text x="424" y="180" font-size="24" fill="#b9b7be">plus 5 shares each at 2 ticks</text>
+
+<!-- Sniper bot -->
+<rect x="400" y="228" width="640" height="272" rx="2" fill="#0b0b0f" stroke="#2a2a32"/>
+<text x="424" y="266" font-size="28" font-weight="500" fill="#edebe6">Sniper bot</text>
+<text x="424" y="304" font-size="24" fill="#d8d0ff">Sees the price 5 ms late</text>
+<text x="424" y="338" font-size="24" fill="#b9b7be">Keeps a delayed copy of the book</text>
+<text x="424" y="372" font-size="24" fill="#b9b7be">Adds up every ask ≤ price − 1 tick</text>
+<text x="424" y="406" font-size="24" fill="#b9b7be">Sends one immediate-or-cancel buy for it:</text>
+<text x="424" y="440" font-size="24" fill="#b9b7be">fills now or disappears; limit price − 1 tick</text>
+<text x="424" y="474" font-size="24" fill="#b9b7be">(mirror for bids)</text>
+
+<!-- On-chain book -->
+<rect x="1200" y="0" width="464" height="270" rx="2" fill="#120f24" stroke="#7b61ff" stroke-width="2"/>
+<text x="1224" y="40" font-size="28" font-weight="500" fill="#d8d0ff">On-chain book</text>
+<text x="1224" y="74" font-size="24" fill="#a3a1a9">the engine</text>
+<text x="1224" y="128" font-size="24" fill="#edebe6">Orders only; no idea of Nasdaq</text>
+<text x="1224" y="166" font-size="24" fill="#b9b7be">Its price: best bid / best ask</text>
+<text x="1224" y="200" font-size="24" fill="#b9b7be">Mid = their average</text>
+
+<!-- Regular trader -->
+<rect x="1200" y="330" width="464" height="170" rx="2" fill="#0b0b0f" stroke="#2a2a32"/>
+<text x="1224" y="370" font-size="28" font-weight="500" fill="#edebe6">Regular trader</text>
+<text x="1224" y="408" font-size="24" fill="#b9b7be">Doesn’t watch Nasdaq</text>
+<text x="1224" y="442" font-size="24" fill="#b9b7be">Random immediate-or-cancel</text>
+<text x="1224" y="476" font-size="24" fill="#b9b7be">buys and sells, about 2 shares</text>
+
+<!-- arrows -->
+<line x1="262" y1="220" x2="396" y2="110" stroke="#a3a1a9" stroke-width="2" marker-end="url(#pa)"/>
+<line x1="262" y1="280" x2="396" y2="370" stroke="#a3a1a9" stroke-width="2" marker-end="url(#pa)"/>
+<line x1="1044" y1="100" x2="1196" y2="100" stroke="#7b61ff" stroke-width="2" marker-end="url(#pav)"/>
+<text x="1120" y="86" font-size="22" fill="#d8d0ff" text-anchor="middle" font-family="'Geist Mono',monospace">quotes</text>
+<line x1="1044" y1="330" x2="1196" y2="250" stroke="#7b61ff" stroke-width="2" marker-end="url(#pav)"/>
+<text x="1104" y="282" font-size="22" fill="#d8d0ff" text-anchor="middle" font-family="'Geist Mono',monospace">takes</text>
+<line x1="1196" y1="268" x2="1048" y2="410" stroke="#a3a1a9" stroke-width="2" stroke-dasharray="6 6" marker-end="url(#pa)"/>
+<text x="1124" y="412" font-size="22" fill="#a3a1a9" text-anchor="middle" font-family="'Geist Mono',monospace">book data</text>
+<line x1="1432" y1="328" x2="1432" y2="276" stroke="#a3a1a9" stroke-width="2" marker-end="url(#pa)"/>
+<text x="1444" y="310" font-size="22" fill="#a3a1a9" font-family="'Geist Mono',monospace">takes</text>
+</svg>
+<p>The book follows Nasdaq only because the LP keeps re-posting. Between a Nasdaq move and the LP’s re-post, its quote is stale: that gap is the race.</p>
+<aside>Two prices exist. Nasdaq’s is the true one; on-chain, nobody sees it directly. The on-chain book only knows orders: its “price” is the best bid and best ask, and the mid is their average. The book tracks Nasdaq only because the LP bot keeps re-posting around the price it last saw. Worked example: the LP has quoted around 100.00, so the book shows a bid at 99.99 for 10 and asks at 100.01 for 10 and 100.02 for 5. Nasdaq moves to 100.05. The sniper sees it in 5 ms, adds up every ask at or below 100.04, and sends one immediate-or-cancel buy for 15 shares with a limit of 100.04. It fills 10 at 100.01 and 5 at 100.02, unless the LP’s cancel, sent after the LP sees the move 20 ms late, lands first. One subtlety: the sniper’s limit takes any ask at or below it, including fresh LP quotes it hasn’t seen yet. With long blocks, the LP’s new quotes sit stale until their block seals, and a sniper order in the same block takes them. The regular trader never looks at Nasdaq; it just trades against whatever the book shows.</aside>
+</section>

@@ -1,0 +1,23 @@
+<section id="drain" class="alt" style="gap:40px">
+<div class="head">
+<p class="eyebrow">Reading the stress run · one engine thread</p>
+<h2>One core trades. The ring shows when it’s full.</h2>
+</div>
+<div class="chain">
+<div class="node" style="width:330px"><p class="nname">Producer</p><p class="nsub">sends the flood: “produced”</p></div>
+<x-shape kind="arrow-right" class="link"></x-shape>
+<div class="node" style="width:330px"><p class="nname">Input ring</p><p class="nsub">65,536 slots</p></div>
+<x-shape kind="arrow-right" class="link"></x-shape>
+<div class="node on" style="width:330px"><p class="nname">Engine</p><p class="nsub">takes up to 8,192 at a time: one “drain”</p></div>
+<x-shape kind="arrow-right" class="link"></x-shape>
+<div class="node" style="width:330px"><p class="nname">Book</p><p class="nsub">“matched”</p></div>
+</div>
+<p class="mono" style="font-size:32px;color:#d8d0ff">matched per second = drains per second × messages per drain</p>
+<div class="row" style="gap:24px">
+<div class="card" style="padding:32px"><p class="lbl">Keeping up</p><p class="name">Ring near empty</p><p class="sub">Small drains. Produced = matched.</p></div>
+<div class="card" style="padding:32px"><p class="lbl">Falling behind</p><p class="name">Ring fills</p><p class="sub">Every drain is a full 8,192.</p></div>
+<div class="card on" style="padding:32px"><p class="lbl">Full</p><p class="name">Producer waits</p><p class="sub">Produced drops to matched. Each order waits ~12 ms.</p></div>
+</div>
+<p class="small">CPU 250% is every thread added up; 100% is one core. Only the engine thread trades. ~12 ms = 65,536 ÷ 5.5M msgs/s, our arithmetic.</p>
+<aside>This is how to read the System page in the stress demo. Three numbers: produced is what the producer thread sends, standing in for the outside world; matched is what the engine thread gets through; the ring sits between them and holds 65,536 messages. The engine loops: take up to 8,192 messages from the ring, one drain, log and match each, repeat. So matched per second is drains per second times messages per drain. When the engine keeps up, the ring is nearly empty, each drain finds a few messages, and produced equals matched. When the producer is faster, the ring gains the difference every second, for example 6 million produced against 5.5 million matched fills the ring in about a tenth of a second, and every drain is a full 8,192. When the ring is full the producer has to wait for a free slot: that is backpressure, and produced falls to the matched rate. Then each order waits in the ring: a full ring is 65,536 messages, which at 5.5 million a second is about 12 milliseconds. That 12 ms is arithmetic from the ring size and the measured rate, not a reading from the dashboard. On CPU: macOS counts 100% as one core, so the process can show 250% while trading still runs on one core. The engine thread is the only one that matches. The producer generates the flood, the standby re-matches every message to check the fills, the log writer writes them to disk, and the UI bridge draws the dashboard. Those take the other cores.</aside>
+</section>

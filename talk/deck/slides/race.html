@@ -1,0 +1,24 @@
+<section id="race" class="alt">
+<div class="head">
+<p class="eyebrow">The stale quote</p>
+<h2>One price move, one race, 8 ticks</h2>
+</div>
+<div class="race">
+<div class="book">
+<p class="side">Asks</p>
+<div class="lvl"><p class="px">100.03</p><p class="qty">5</p><p class="who">LP</p></div>
+<div class="lvl stale"><p class="px">100.02</p><p class="qty">10</p><p class="who">LP · now stale</p></div>
+<div class="mid"><p class="px">Nasdaq 100.01 → 100.10</p></div>
+<div class="lvl"><p class="px">100.00</p><p class="qty">10</p><p class="who">LP</p></div>
+<div class="lvl"><p class="px">99.99</p><p class="qty">5</p><p class="who">LP</p></div>
+<p class="side">Bids</p>
+</div>
+<div class="steps">
+<div class="step fragment"><p class="t">t = 0 ms</p><p class="what">Nasdaq jumps to 100.10. The ask at 100.02 is now 8 ticks too cheap.</p></div>
+<div class="step fragment"><p class="t">t = 8 ms</p><p class="what">The sniper’s buy reaches the sequencer first.</p></div>
+<div class="step fragment"><p class="t">t = 23 ms</p><p class="what">The LP’s cancel arrives, 15 ms late.</p></div>
+<div class="step result fragment"><p class="t">result</p><p class="what">The sniper buys 10 at 100.02, worth 100.10: 8 ticks a share, paid by the LP.</p></div>
+</div>
+</div>
+<aside>Click through the four steps. The LP quoted one cent around the price. Nasdaq moves; both the LP and the sniper react, but whoever reaches the sequencer first decides. A trade happens at the resting price, 100.02, so the sniper keeps the whole 8 cents a share. The latencies are our simulation defaults: sniper sees in 5 ms and sends in 3; LP sees in 20 and sends in 3.</aside>
+</section>

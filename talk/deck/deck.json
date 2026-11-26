@@ -1,0 +1,80 @@
+{
+  "v": 5,
+  "attachments": {},
+  "cover": "cover",
+  "createdOnFiles": {
+    "at": "2026-11-16T12:00:00Z",
+    "v": 1
+  },
+  "designSystems": [],
+  "faces": {
+    "geist": {
+      "family": "Geist",
+      "href": "https://fonts.googleapis.com/css2?family=Geist:wght@300..600&display=swap"
+    },
+    "geist-mono": {
+      "family": "Geist Mono",
+      "href": "https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400..500&display=swap"
+    }
+  },
+  "format": {
+    "shared": [
+      "project/deck.css"
+    ],
+    "v": 1
+  },
+  "lists": "css",
+  "order": [
+    "cover",
+    "weekend",
+    "prices",
+    "race",
+    "network",
+    "layers",
+    "assumptions",
+    "budish",
+    "built",
+    "system",
+    "rings",
+    "onewriter",
+    "cost",
+    "cores",
+    "os",
+    "deploy",
+    "demo",
+    "results",
+    "money",
+    "monday",
+    "pga",
+    "drain",
+    "takeaways",
+    "thanks"
+  ],
+  "sections": {
+    "s1": {
+      "description": "The problem: stocks that never close, and the race a stale quote starts",
+      "start": "cover"
+    },
+    "s2": {
+      "description": "The model: the sequencer orders, the engine matches, and Budish’s 1 in N+1",
+      "start": "layers"
+    },
+    "s3": {
+      "description": "What we built and why one thread owns the book",
+      "start": "built"
+    },
+    "s4": {
+      "description": "Live demo on the dashboard",
+      "start": "demo"
+    },
+    "s5": {
+      "description": "Results: who keeps the stale-quote prize under each ordering rule",
+      "start": "results"
+    },
+    "s6": {
+      "description": "Takeaways: what one core can do, and who keeps the prize",
+      "start": "drain"
+    }
+  },
+  "title": "Stale Quotes"
+}

@@ -1,0 +1,25 @@
+<section id="built">
+<div class="head">
+<p class="eyebrow">What we built</p>
+<h2>One Rust process. One thread owns the book.</h2>
+</div>
+<div class="chain">
+<div class="node"><p class="nname">Price feed</p><p class="nsub">Nasdaq path, hidden on weekends</p></div>
+<x-shape kind="arrow-right" class="link"></x-shape>
+<div class="node"><p class="nname">Agents</p><p class="nsub">LP, snipers, traders, each with a latency</p></div>
+<x-shape kind="arrow-right" class="link"></x-shape>
+<div class="node"><p class="nname">Sequencer</p><p class="nsub">blocks, sorted by the ordering rule</p></div>
+<x-shape kind="arrow-right" class="link"></x-shape>
+<div class="node"><p class="nname">Input log</p><p class="nsub">the source of truth</p></div>
+<x-shape kind="arrow-right" class="link"></x-shape>
+<div class="node on"><p class="nname">Engine</p><p class="nsub">single writer, order book</p></div>
+<x-shape kind="arrow-right" class="link"></x-shape>
+<div class="node"><p class="nname">Readers</p><p class="nsub">ledger, metrics, dashboard</p></div>
+</div>
+<div class="row">
+<div class="card"><p class="name">Same seed, same bytes</p><p class="sub">Every run replays exactly from its log</p></div>
+<div class="card"><p class="name">$0.00</p><p class="sub">Every run’s books sum to zero across five account classes</p></div>
+<div class="card"><p class="name">43,200 runs</p><p class="sub">216 settings × 200 seeds, every rule on the same seeds</p></div>
+</div>
+<aside>Latency is a number on a virtual clock, not a real network, so every run is deterministic: same seed, same bytes. The sequencer collects orders into blocks and sorts them by the rule we’re testing. The engine is the only thing that touches the book. The ledger tracks regular traders, LPs, snipers, the protocol and the chain, and the books always balance. Repo: github.com/rosalbito/onchain-stocks-sim.</aside>
+</section>

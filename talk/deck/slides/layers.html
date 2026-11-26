@@ -1,0 +1,21 @@
+<section id="layers">
+<div class="head">
+<p class="eyebrow">Two layers</p>
+<h2>The sequencer orders. The engine matches.</h2>
+</div>
+<div class="row">
+<div class="card"><p class="lbl">In</p><p class="name">Orders</p><p class="sub">quotes, snipes, cancels</p></div>
+<x-shape kind="arrow-right" class="arrow"></x-shape>
+<div class="card"><p class="lbl">1 · Sequencer</p><p class="name">Decides the order</p><div class="chips"><p class="chip on">First come, first served</p><p class="chip on">Priority gas auction</p><p class="chip on">Cancel priority</p></div></div>
+<x-shape kind="arrow-right" class="arrow"></x-shape>
+<div class="card"><p class="lbl">2 · Matching engine</p><p class="name">Decides what it means</p><div class="chips"><p class="chip on">Order book (CLOB)</p><p class="chip">Batch auction (FBA): not built</p></div></div>
+</div>
+<table>
+<tr><th style="width:30%">Rule</th><th style="width:22%">Runs today on</th><th style="width:16%">Layer</th><th>The stale-quote prize goes to</th></tr>
+<tr><td>First come, first served</td><td>Robinhood Chain</td><td>Sequencer</td><td>the fastest sniper</td></tr>
+<tr><td>Priority gas auction</td><td>Arbitrum</td><td>Sequencer</td><td>the chain, as fees</td></tr>
+<tr class="hi"><td>Cancel priority</td><td>≈ Hyperliquid</td><td>Sequencer</td><td>the LP keeps it</td></tr>
+<tr><td>Batch auction</td><td>—</td><td>Engine</td><td>mostly the LP</td></tr>
+</table>
+<aside>This is the slide that untangles the vocabulary. The sequencer only decides order; the engine decides what an order means. In an order book, order is everything: first in line wins. Purple means built: we built the order book and all three sequencer rules, one active at a time, switchable live, and ran every rule on the same seeds. The batch auction is explained, not built. Each rule runs somewhere today. Robinhood Chain is first come, first served; its docs say priority gas auctions do not exist there (CoinDesk reported in October, from one anonymous source, that it is considering PGA). Arbitrum replaced Timeboost with PGA in September 2026: a fee auction inside each 125 ms round, ties to whoever arrived first. Hyperliquid is the closest to cancel priority: cancels run before orders that can trade in each block, though post-only orders go even earlier and takers can pay fees for earlier processing, never ahead of cancels.</aside>
+</section>

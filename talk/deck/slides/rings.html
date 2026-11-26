@@ -1,0 +1,25 @@
+<section id="rings" style="gap:32px">
+<div class="head">
+<p class="eyebrow">How threads hand off work</p>
+<h2>Rings: 125 ns a hand-off. Channels: 5 µs.</h2>
+</div>
+<div class="row" style="gap:64px;align-items:flex-start">
+<div style="width:820px;display:flex;flex-direction:column;gap:36px">
+<div><p class="eyebrow">Why not call directly?</p>
+<p style="font-size:32px;color:#edebe6;margin-top:12px">One thread would do all three jobs: <span class="violet">~500 ns</span> a message, so ~2M msgs/s instead of 5.5M.</p></div>
+<div><p class="eyebrow">What a ring costs</p>
+<p style="font-size:32px;color:#edebe6;margin-top:12px">15 of our 33 MB, up front. One ring per reader. Full? Wait or drop.</p></div>
+</div>
+<div style="flex:1">
+<table style="font-size:28px">
+<tr><th>Hand-off</th><th style="text-align:right">Msgs/s</th><th style="text-align:right">Delay</th></tr>
+<tr><td>Direct call</td><td style="text-align:right">29.0M</td><td style="text-align:right">83 ns</td></tr>
+<tr class="hi"><td>Ring, ours</td><td style="text-align:right">23.7M</td><td style="text-align:right">125 ns</td></tr>
+<tr><td>Channels</td><td style="text-align:right">8.7–18.4M</td><td style="text-align:right">5–6.5 µs</td></tr>
+<tr><td>Mutex + queue</td><td style="text-align:right">7.0M</td><td style="text-align:right">tail: ms</td></tr>
+</table>
+</div>
+</div>
+<p class="small">Bench: <span class="mono">cargo run --release -p bench -- channels</span>, Apple M3. 1 µs = 1,000 ns. Channels = std, crossbeam, tokio.</p>
+<aside>Every arrow on the last slide is a ring: a fixed array that one thread writes and one thread reads, each moving only its own position counter, so there is no lock and nothing is allocated per message. Why not skip the hand-off? The direct call in the table is the engine with nothing else to do. In the real system three jobs happen for every message: the engine matches it, the log writer encodes it and writes it to disk, and the standby matches it again to check. At full speed, 5.5 million messages a second, the engine thread spends about 180 ns a message, and the log writer and the standby keep their own cores 70 to 100% busy, about 150 and 170 ns of work per message. Today those run in parallel on three cores. Without rings, one thread would do all three in a row: about 500 ns a message, so about 2 million messages a second instead of 5.5. That is arithmetic from the measured CPU use, not a separate run. The ring costs about 40 ns per hand-off to move about 320 ns of work off the engine’s core. And the input still arrives from other threads, so some hand-off is unavoidable. Channels are slower because their reader goes to sleep and the operating system has to wake it. What the ring costs. Memory: rings are allocated up front at their full size; ours hold 64k records each, about 15 MB in all, roughly half the process. One writer and one reader only: to feed the log and the standby we keep one ring each and copy every record into both. Bounded: when a ring fills, something has to give, and we choose per reader: the log and the standby make the engine wait, the UI drops. Waiting: our readers spin for a moment, then nap 50 µs, so an idle system costs nothing but a quiet one adds up to 50 µs. Upkeep: it is a small, well-used crate, but its unsafe code is something we trust rather than read, and the pattern is less familiar than a channel. So we use it only on the hot path; the web edge uses ordinary tokio channels, where microseconds don’t matter.</aside>
+</section>
