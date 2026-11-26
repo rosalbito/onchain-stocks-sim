@@ -116,6 +116,8 @@ The decisions that shape the system, one short record each: the context, what we
 - One book needs one dedicated core for its engine thread. Its standby and log writer each need most of a core flat out, but are nearly idle at real-market rates.
 - On bigger machines, run many books, each engine on its own isolated core, with the helpers and the OS on the rest.
 - A second machine is for availability, not speed: run each book's standby there, fed the same log.
+- In front of the books: gateways take connections, check orders and route each one **by ticker**. A load balancer may spread traffic over the gateways, which hold no state, but never over books: every order for a stock must reach that stock's one engine thread, or there is no single order of events. Each hop costs microseconds inside one region, small next to a 250 ms block, so add it only when needed.
+- The sequencer needs no separate scaling: each book's sequencer runs on that book's engine thread. On a chain, the chain's own sequencer orders every book's transactions; that shared step is the chain's limit, not the engine's.
 
 **Open.** Redo the core measurement as a controlled test: a fixed number of CPU burners, with and without QoS.
 
