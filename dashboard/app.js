@@ -751,21 +751,36 @@ const CLASSES = {
 function renderProfits(s) {
   const p = s.profits;
   if (!p) {
-    $("p-story").innerHTML = `<li>Stress mode has no accounts: its flow is synthetic. Start a market run to see who gains and who loses.</li>`;
-    $("p-classes").innerHTML = "";
+    $("p-loss").textContent = "–"; $("p-rule").textContent = "stress";
+    $("p-loss-note").textContent = "Stress mode has no accounts: its flow is synthetic. Start a market run to see who gains and who loses.";
+    $("p-bars").innerHTML = ""; $("p-classes").innerHTML = "";
     $("p-sum").textContent = ""; $("p-sum-fill").textContent = "";
     return;
   }
-  const lines = [];
-  lines.push(p.lp_to_sniper > 0.005
-    ? `The LP lost <b class="hl">${usd(p.lp_to_sniper, false)}</b> to snipers, who won <b>${p.sniper_races}</b> races; the LP got out first in <b>${p.lp_races}</b>.`
-    : `Snipers have taken nothing from the LP yet (${p.sniper_races} sniper wins, ${p.lp_races} LP wins).`);
-  lines.push(`Regular traders lost <b>${usd(p.regular_to_lp, false)}</b> to the LP on their fills (the spread they cross, and any stale price they trade at)${Math.abs(p.regular_to_sniper) > 0.005 ? `, and ${p.regular_to_sniper > 0 ? "lost" : "gained"} <b>${usd(Math.abs(p.regular_to_sniper), false)}</b> trading with snipers` : ""}.`);
-  lines.push(p.priority_fees > 0.005
-    ? `The chain earned <b>${usd(p.priority_fees, false)}</b> in priority fees: snipers bid ${usd(p.sniper_priority_fees, false)}, the LP ${usd(p.lp_priority_fees, false)}.`
-    : `The chain earned nothing: priority fees are only bid under a priority gas auction (press <b>p</b>).`);
-  lines.push(`The protocol earned <b>${usd(p.taker_fees, false)}</b> in taker fees.`);
-  $("p-story").innerHTML = lines.map((l) => `<li>${l}</li>`).join("");
+  $("p-rule").textContent = RULE_NAMES[s.market.rule] || s.market.rule;
+  $("p-loss").textContent = usd(p.lp_to_sniper, false);
+  const races = p.sniper_races + p.lp_races;
+  $("p-loss-note").textContent = races ? `snipers won ${p.sniper_races} of ${races} races; the LP got out first in ${p.lp_races}` : "no races yet";
+  const lpShare = races ? (100 * p.lp_races) / races : 0;
+  $("p-bar-lp").style.width = `${lpShare}%`;
+  $("p-bar-sn").style.width = `${races ? 100 - lpShare : 0}%`;
+  $("p-lp-races").textContent = races ? `${Math.round(lpShare)}%` : "–";
+  $("p-sn-races").textContent = races ? `${Math.round(100 - lpShare)}%` : "–";
+  $("p-taker").textContent = usd(p.taker_fees, false);
+  $("p-chain").textContent = usd(p.priority_fees, false);
+  $("p-chain-note").textContent = p.priority_fees > 0.005
+    ? `priority bids: snipers ${usd(p.sniper_priority_fees, false)}, LP ${usd(p.lp_priority_fees, false)}`
+    : "chain fees are bid only under PGA";
+  const max = Math.max(0.01, ...p.classes.map((c) => Math.abs(c.take_at_fill)));
+  const bar = (c) => {
+    const v = c.take_at_fill, w = `${(50 * Math.abs(v)) / max * 2}%`;
+    const name = CLASSES[c.key][0];
+    return `<div class="r"><span class="n">${name}</span>`
+      + `<span class="l">${v < 0 ? `<span style="width:${w}"></span>` : ""}</span>`
+      + `<span class="g">${v > 0 ? `<span style="width:${w}"></span>` : ""}</span>`
+      + `<span class="v ${v < -0.005 ? "neg" : ""}">${usd(v)}</span></div>`;
+  };
+  $("p-bars").innerHTML = `<div class="axis"><span></span><span>lost</span><span>gained</span><span></span></div>` + p.classes.map(bar).join("");
   const cls = (v) => (v < -0.005 ? "neg" : v > 0.005 ? "pos" : "");
   $("p-classes").innerHTML = p.classes.map((c) => {
     const [name, who] = CLASSES[c.key];
@@ -774,7 +789,7 @@ function renderProfits(s) {
   }).join("");
   const fill = p.classes.reduce((a, c) => a + c.take_at_fill, 0);
   $("p-sum-fill").textContent = `${usd(fill)} · zero-sum`;
-  $("p-sum").textContent = `${usd(p.sum)} · zero-sum, marked at ${p.mark.toFixed(2)}`;
+  $("p-sum").textContent = `${usd(p.sum)} · marked at ${p.mark.toFixed(2)}`;
 }
 
 // ---------- start ----------

@@ -133,10 +133,20 @@
     </main>
 
     <main id="page-profits" class="page profits" hidden>
-      <div class="card story">
-        <h2 class="label">who gained, who lost</h2>
-        <ul id="p-story" class="story-lines"></ul>
-        <p class="note">Transfers are valued at the Nasdaq price at the moment of each fill. The table also marks what each class holds to the price now, so it moves with the price; every row sums to zero.</p>
+      <div class="tiles">
+        <div class="card tile hero"><span class="label">LP lost to snipers · <span id="p-rule"></span></span><b id="p-loss">–</b><span id="p-loss-note" class="sub"></span></div>
+        <div class="card tile"><span class="label">races won</span>
+          <div class="race-bar"><span id="p-bar-lp" class="lp"></span><span id="p-bar-sn" class="sn"></span></div>
+          <div class="race-legend"><span><i class="dot lp"></i>LP <b id="p-lp-races">–</b></span><span><i class="dot sn"></i>snipers <b id="p-sn-races">–</b></span></div>
+        </div>
+        <div class="card tile"><span class="label">fees earned</span>
+          <div class="fees"><span>protocol <b id="p-taker">–</b></span><span>chain <b id="p-chain">–</b></span></div>
+          <span id="p-chain-note" class="sub"></span>
+        </div>
+      </div>
+      <div class="card flows">
+        <h2 class="label">who gained, who lost · on their fills, valued at the Nasdaq price at that moment</h2>
+        <div id="p-bars" class="bars"></div>
       </div>
       <div class="card ledger">
         <table class="classes">
@@ -144,6 +154,7 @@
           <tbody id="p-classes"></tbody>
           <tfoot><tr><td>sum</td><td></td><td id="p-sum-fill"></td><td></td><td id="p-sum"></td></tr></tfoot>
         </table>
+        <p class="note">pnl now also marks what each class holds to the price now, after fees, so it moves with the price. Every column sums to zero.</p>
       </div>
     </main>
   </section>
