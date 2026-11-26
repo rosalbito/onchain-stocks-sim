@@ -1,0 +1,14 @@
+<section id="onewriter" class="alt">
+<div class="head">
+<p class="eyebrow">Why one writer</p>
+<h2>A lock made the same work 750× slower</h2>
+</div>
+<div class="bars">
+<div class="bar-row"><p class="bname">Single thread</p><p class="bval">300 ms</p><div class="bar on" style="width:324px"></div><p class="bx">1×</p></div>
+<div class="bar-row"><p class="bname">Single thread + lock</p><p class="bval">10,000 ms</p><div class="bar" style="width:523px"></div><p class="bx">33×</p></div>
+<div class="bar-row"><p class="bname">Two threads + lock</p><p class="bval">224,000 ms</p><div class="bar" style="width:700px"></div><p class="bx">747×</p></div>
+</div>
+<p>Matching is sequential: message 41 must go before 42. A second thread can’t make it faster, only make the two take turns through a lock.</p>
+<p class="small">Incrementing one 64-bit counter 500 million times · LMAX Disruptor technical paper, §2.1 · bar length on a log scale</p>
+<aside>This is why the engine has exactly one writer thread, the design LMAX used to run an exchange on a single thread. The only shared thing in this benchmark is one counter, and adding a lock and a second thread made it about 750 times slower. Everything around the book (parsing, validation, the dashboard) runs on other threads and talks to the engine through lock-free ring buffers.</aside>
+</section>

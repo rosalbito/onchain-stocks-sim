@@ -29,6 +29,7 @@ use serde_json::{json, Value};
 use sim::log::{self, FillsHasher, LogFile, WireRecord};
 use tokio::sync::watch;
 
+use crate::charts::{Candles, Zoom};
 use crate::engine_thread::{
     Frame, LogMsg, Outcome, RunInfo, StandbyMsg, State, UiMsg, CHART, RING_NAMES, SCENARIOS,
 };
@@ -770,6 +771,51 @@ fn px(ticks: i64) -> f64 {
     ticks as f64 / 100.0
 }
 
+/// `{t0, w, c: [[o, h, l, c, vol] | null]}`, times in seconds, prices in dollars.
+fn candles_json(c: &Candles) -> Value {
+    let rows: Vec<Value> = c.c[..c.n as usize]
+        .iter()
+        .map(|k| {
+            if k.vol == 0 {
+                Value::Null
+            } else {
+                json!([px(k.o), px(k.h), px(k.l), px(k.c), k.vol])
+            }
+        })
+        .collect();
+    json!({ "t0": c.t0 as f64 / 1e9, "w": c.width as f64 / 1e9, "c": rows })
+}
+
+/// The race zoom; times in ms after the Nasdaq move, null when there was none.
+fn zoom_json(z: &Zoom) -> Value {
+    if !z.valid {
+        return Value::Null;
+    }
+    let ms = |t: i64| {
+        if t == i64::MIN {
+            Value::Null
+        } else {
+            json!(t as f64 / 1e6)
+        }
+    };
+    let outcome = |o: Outcome| match o {
+        Outcome::Open => "open",
+        Outcome::Lp => "lp",
+        Outcome::Sniper => "sniper",
+        Outcome::Other => "other",
+    };
+    json!({
+        "t": z.start_ns as f64 / 1e9,
+        "move": z.move_ticks,
+        "races": z.races,
+        "sniper": { "see": ms(z.sniper_see), "arrive": ms(z.sniper_arrive) },
+        "quotes": z.rows[..z.n as usize].iter().map(|r| json!({
+            "lp": r.agent, "see": ms(r.see), "arrive": ms(r.arrive), "end": ms(r.end),
+            "qty": r.qty, "outcome": outcome(r.outcome),
+        })).collect::<Vec<_>>(),
+    })
+}
+
 const CLASS_KEYS: [&str; 5] = ["regular", "lp", "sniper", "protocol", "chain"];
 
 fn snapshot(f: &Frame, sb: &StandbyStats, lg: &LogStatus, smp: &Sampler, tel: &Telemetry) -> Value {
@@ -857,6 +903,7 @@ fn snapshot(f: &Frame, sb: &StandbyStats, lg: &LogStatus, smp: &Sampler, tel: &T
             "block_ms": spec.block_ms,
             "seed": spec.seed,
             "speed": spec.speed_milli as f64 / 1000.0,
+            "crowd": spec.crowd,
         },
         "run": {
             "id": f.run_id,
@@ -867,6 +914,8 @@ fn snapshot(f: &Frame, sb: &StandbyStats, lg: &LogStatus, smp: &Sampler, tel: &T
         },
         "sys": sys,
         "book": book,
+        "candles": candles_json(&f.candles),
+        "tape": f.tape.rows[..f.tape.n as usize].iter().map(|r| json!([s(r.t_ns), px(r.px), r.qty, r.buy])).collect::<Vec<_>>(),
     });
 
     if f.state == State::Market {
@@ -942,6 +991,7 @@ fn snapshot(f: &Frame, sb: &StandbyStats, lg: &LogStatus, smp: &Sampler, tel: &T
             "nasdaq": px(m.true_px),
             "mid": mid,
             "chart": { "t0": s(m.chart_t0), "t1": s(m.chart_t1), "n": CHART, "points": chart },
+            "zoom": zoom_json(&m.zoom),
             "races": {
                 "feed": feed,
                 "sniper": rs.sniper_won, "lp": rs.lp_won, "other": rs.other_filled,

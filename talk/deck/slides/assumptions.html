@@ -1,0 +1,30 @@
+<section id="assumptions" class="alt" style="gap:40px">
+<div class="head">
+<p class="eyebrow">Illustrative, not calibrated</p>
+<h2>The model, in numbers</h2>
+</div>
+<div class="row" style="gap:24px">
+<div class="card" style="padding:32px"><p class="lbl">Price</p>
+<ul style="font-size:28px;line-height:1.5;color:#edebe6">
+<li>$100, 1 tick = 1¢</li>
+<li>±1 tick a second</li>
+<li>Jumps every ~5 min</li>
+<li>Monday gap ~1%</li>
+</ul></div>
+<div class="card" style="padding:32px"><p class="lbl">Who trades</p>
+<ul style="font-size:28px;line-height:1.5;color:#edebe6">
+<li>1 LP, sees 20 ms late</li>
+<li>3 snipers, 5 ms late</li>
+<li>All send in 3 ms</li>
+<li>1 trader, 0.5 orders/s</li>
+</ul></div>
+<div class="card" style="padding:32px"><p class="lbl">Sequencer</p>
+<ul style="font-size:28px;line-height:1.5;color:#edebe6">
+<li>Blocks of B ms</li>
+<li>Headline B = 250 ms</li>
+<li>FCFS · PGA · cancel first</li>
+</ul></div>
+</div>
+<div class="card on" style="padding:32px;gap:12px"><p class="lbl">Order size · σ = 1</p><p class="sub" style="font-size:28px;color:#edebe6">Median 2 shares. Real flow is wider (σ 1.5–2.3): it shrinks every bps figure, not who wins.</p></div>
+<aside>Every number in the model, up front, so nobody has to ask. None are calibrated to a real stock; they are round, reasonable choices. Price: a random walk in whole cents with occasional jumps, hidden over the weekend; the typical Monday gap is about 1%, like a single big-tech stock. The ± on latencies is jitter: the LP sees in 20 ± 5 ms, snipers 5 ± 1, everyone sends in 3 ± 1. Headline runs make snipers twice as fast as the LP; the grid also sweeps 10× faster and equal, and 1, 3 or 10 snipers: 216 settings × 200 seeds. On σ: order sizes are log-normal, which means the logarithm of the size is a bell curve, and σ is that bell curve’s width. With σ = 1 and a median of 2 shares, two in three orders fall between about 1 and 5 shares. Real sizes are much more spread out: we fitted σ ≈ 1.5 to 11,317 xStocks swaps on Solana DEXs in November 2026, about 2.0 to 24.6M tokenized-stock trades across six chains, and 2.3 to US retail orders in S&P 500 stocks from Virtu’s Rule 605 report, September 2026. A wider σ means more volume, so every bps figure gets smaller; who wins races barely moves. That is why we quote ratios between rules on the same seeds, not absolute bps. The LP’s sizes, 10 and 5 shares, are made up too. The sniper takes all the stale size, so doubling them roughly doubles every dollar figure under every rule, and the ratios between rules stay the same. If someone asks why only the sniper keeps a copy of the book: the LP prices from Nasdaq and only tracks its own orders; the sniper’s job is to find stale orders, so it has to see what is resting.</aside>
+</section>

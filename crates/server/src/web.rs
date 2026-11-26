@@ -92,6 +92,9 @@ pub fn parse_command(v: &Value) -> Result<Command, String> {
             if let Some(r) = int_of("rate", 0, 100_000_000)? {
                 spec.rate = r;
             }
+            if let Some(c) = field("crowd") {
+                spec.crowd = c.as_bool().ok_or("start: crowd must be true or false")?;
+            }
             Command::Start(spec)
         }
         "stop" => Command::Stop,

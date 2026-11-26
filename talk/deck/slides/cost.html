@@ -1,0 +1,22 @@
+<section id="cost">
+<div class="head">
+<p class="eyebrow">Where the time goes · stress flow, flat out on an M3</p>
+<h2>Matching is about half the cost</h2>
+</div>
+<div style="display:flex;flex-direction:column;gap:16px">
+<div style="display:flex;justify-content:space-between"><p style="font-family:'Geist Mono',monospace;font-size:24px;color:#a3a1a9">0</p><p style="font-family:'Geist Mono',monospace;font-size:24px;color:#a3a1a9">~190 ns per message on the engine thread</p></div>
+<div style="display:flex;height:96px;width:1664px">
+<div style="width:876px;background:#7b61ff;border-radius:2px 0 0 2px;display:flex;align-items:center;padding-left:24px"><p style="font-size:32px;color:#ffffff;font-weight:500">~100 ns</p></div>
+<div style="width:438px;background:#4a4a55;display:flex;align-items:center;padding-left:24px"><p style="font-size:32px;color:#edebe6">~50 ns</p></div>
+<div style="flex:1;background:#3a3a43;border-radius:0 2px 2px 0;display:flex;align-items:center;padding-left:24px"><p style="font-size:32px;color:#edebe6">~40 ns</p></div>
+</div>
+<div style="display:flex"><p style="width:876px;font-size:24px;color:#d8d0ff">matching</p><p style="width:438px;font-size:24px;color:#b9b7be;padding-left:24px">fills hash (SHA-256)</p><p style="font-size:24px;color:#b9b7be;padding-left:24px">ring hand-offs</p></div>
+</div>
+<div class="row">
+<div class="card"><p class="lbl">Log writer</p><p class="name">Waits</p><p class="sub">It gets every record, or the log stops being the truth</p></div>
+<div class="card"><p class="lbl">Standby</p><p class="name">Waits</p><p class="sub">It checks every fill against the primary’s</p></div>
+<div class="card"><p class="lbl">UI bridge</p><p class="name">Drops</p><p class="sub">Only the newest frame matters</p></div>
+</div>
+<p class="small">Two numbers, kept apart: <span class="violet">~190 ns</span> = all the engine thread does per message, flat out (demo: stress at max shows 5.3–5.7M msgs/s, and 1 s ÷ 5.5M ≈ 180–190 ns). <span class="violet">21–38 ns</span> = matching alone, on recorded calm flows with a shallow book (<span class="mono">bench -- engine</span>).</p>
+<aside>This is the trade-off the whole system starts from. There are two numbers, each for its own flow. On the recorded market flows, with a shallow book, the bare engine matches a message in about 21 to 40 nanoseconds. On the stress flow, flat out, the whole engine thread spends about 190 nanoseconds per message: about 100 matching a deep book with many cancels, about 50 hashing the fills, about 40 handing every record to the log writer and the standby through their rings. Separate threads buy parallel work, and the price is the hand-off. The second trade-off is what happens when a reader falls behind. The log writer and the standby must see every record, so the engine waits for them: correctness over speed. The UI only needs the latest picture, so it drops old frames: it can never slow the engine down. At 1 million messages a second everything keeps up, with 43 microseconds at the 99th percentile. Flat out, the engine thread is the first to run out, then the standby, then the log writer at about 100 MB/s; the disk is never the limit.</aside>
+</section>

@@ -1,0 +1,39 @@
+<section id="results" style="gap:32px">
+<div class="head">
+<p class="eyebrow">Results · what the LP loses to snipers, in dollars</p>
+<h2>Cancel priority is the fix</h2>
+</div>
+<svg viewBox="0 0 1664 470" width="1664" height="470" aria-label="Bar chart. Dollars the LP loses to snipers, mean of 200 runs, 250 ms blocks. Weekday, per hour: first come first served 19.22 dollars, priority gas auction 40.48, cancel priority 3.82. Monday open, first 5 minutes: first come first served 18.37 dollars, priority gas auction 20.19, cancel priority 0.31." style="display:block;flex-shrink:0;font-family:'Geist',Arial,sans-serif">
+<text x="0" y="30" font-size="28" font-weight="500" fill="#edebe6">Weekday · one hour</text>
+<text x="0" y="66" font-size="24" fill="#b9b7be">First come, first served</text>
+<rect x="340" y="44" width="476" height="32" rx="2" fill="#4a4a55"/>
+<text x="830" y="68" font-size="26" fill="#edebe6" font-family="'Geist Mono',monospace">$19.22</text>
+<text x="0" y="116" font-size="24" fill="#b9b7be">Priority gas auction</text>
+<rect x="340" y="94" width="1002" height="32" rx="2" fill="#4a4a55"/>
+<text x="1356" y="118" font-size="26" fill="#edebe6" font-family="'Geist Mono',monospace">$40.48</text>
+<text x="0" y="166" font-size="24" fill="#d8d0ff">Cancel priority</text>
+<rect x="340" y="144" width="95" height="32" rx="2" fill="#7b61ff"/>
+<text x="449" y="168" font-size="26" fill="#d8d0ff" font-family="'Geist Mono',monospace">$3.82 · 5× less</text>
+<text x="0" y="250" font-size="28" font-weight="500" fill="#edebe6">Monday open · first 5 minutes</text>
+<text x="0" y="286" font-size="24" fill="#b9b7be">First come, first served</text>
+<rect x="340" y="264" width="455" height="32" rx="2" fill="#4a4a55"/>
+<text x="809" y="288" font-size="26" fill="#edebe6" font-family="'Geist Mono',monospace">$18.37</text>
+<text x="0" y="336" font-size="24" fill="#b9b7be">Priority gas auction</text>
+<rect x="340" y="314" width="500" height="32" rx="2" fill="#4a4a55"/>
+<text x="854" y="338" font-size="26" fill="#edebe6" font-family="'Geist Mono',monospace">$20.19</text>
+<text x="0" y="386" font-size="24" fill="#d8d0ff">Cancel priority</text>
+<rect x="340" y="364" width="8" height="32" rx="2" fill="#7b61ff"/>
+<text x="362" y="388" font-size="26" fill="#d8d0ff" font-family="'Geist Mono',monospace">$0.31 · 60× less</text>
+<line x1="340" y1="420" x2="1580" y2="420" stroke="#6a6a73" stroke-width="2"/>
+<line x1="340" y1="412" x2="340" y2="428" stroke="#6a6a73" stroke-width="2"/>
+<line x1="835" y1="412" x2="835" y2="428" stroke="#6a6a73" stroke-width="2"/>
+<line x1="1331" y1="412" x2="1331" y2="428" stroke="#6a6a73" stroke-width="2"/>
+<text x="340" y="458" font-size="22" fill="#a3a1a9" text-anchor="middle" font-family="'Geist Mono',monospace">$0</text>
+<text x="835" y="458" font-size="22" fill="#a3a1a9" text-anchor="middle" font-family="'Geist Mono',monospace">$20</text>
+<text x="1331" y="458" font-size="22" fill="#a3a1a9" text-anchor="middle" font-family="'Geist Mono',monospace">$40</text>
+<text x="1580" y="458" font-size="22" fill="#a3a1a9" text-anchor="end" font-family="'Geist Mono',monospace">LP’s loss, $</text>
+</svg>
+<p>Five minutes of Monday cost the LP about as much as a whole weekday hour.</p>
+<p class="small">One LP, 3 snipers twice as fast, 250 ms blocks · mean of 200 runs per bar, same seeds for every rule · <span class="mono">analysis/out/headline_b250.csv</span>. The demo’s Profits page shows one such run live.</p>
+<aside>Read it as: how many dollars the one LP hands to snipers. Top group: a weekday hour. Bottom group: only the first five minutes after the Monday reopen, on the same dollar scale, so you can see that five minutes of Monday cost about as much as a whole weekday hour. Each bar is the mean of 200 runs with the same seeds for every rule; 95% intervals are within about 10% and in the repo. Cancel priority cuts the LP’s loss about five times on a weekday and about sixty times at the Monday open. PGA is the worst for the LP: the next slides show why and where that money goes. In bps of volume, the unit in the repo’s chart: weekday 0.32, 0.50, 0.07; Monday 3.64, 2.96, 0.07. The dollar amounts depend on how much the made-up regular trader trades; the ratios between rules are what carry over. Across block lengths: at B = 0 the rules are identical by construction; from 50 ms up, cancel priority cuts the loss; at 1-second blocks it weakens, because it protects quotes that were already resting, not ones posted inside the same block.</aside>
+</section>

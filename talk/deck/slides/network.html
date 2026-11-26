@@ -1,0 +1,39 @@
+<section id="network" style="gap:40px">
+<div class="head">
+<p class="eyebrow">Where a race is decided</p>
+<h2>The race is won in the network</h2>
+</div>
+<svg viewBox="0 0 1664 230" width="1664" height="230" aria-label="Log scale from 100 nanoseconds to 1 second. The engine thread spends about 190 nanoseconds a message. A network round trip is under 1 millisecond in the same region and about 100 to 250 milliseconds across continents. A block is 50 to 1,000 milliseconds." style="display:block;flex-shrink:0;font-family:'Geist',Arial,sans-serif">
+<text x="832" y="30" font-size="24" fill="#edebe6" text-anchor="middle">Same region: under 1 ms</text>
+<text x="1664" y="30" font-size="24" fill="#edebe6" text-anchor="end">Across continents: ~100–250 ms</text>
+<rect x="713" y="48" width="238" height="14" rx="2" fill="#6a6a73"/>
+<rect x="1426" y="48" width="95" height="14" rx="2" fill="#6a6a73"/>
+<line x1="0" y1="100" x2="1664" y2="100" stroke="#6a6a73" stroke-width="3"/>
+<line x1="1" y1="90" x2="1" y2="110" stroke="#6a6a73" stroke-width="2"/>
+<line x1="238" y1="90" x2="238" y2="110" stroke="#6a6a73" stroke-width="2"/>
+<line x1="475" y1="92" x2="475" y2="108" stroke="#6a6a73" stroke-width="2"/>
+<line x1="713" y1="92" x2="713" y2="108" stroke="#6a6a73" stroke-width="2"/>
+<line x1="951" y1="90" x2="951" y2="110" stroke="#6a6a73" stroke-width="2"/>
+<line x1="1189" y1="92" x2="1189" y2="108" stroke="#6a6a73" stroke-width="2"/>
+<line x1="1426" y1="92" x2="1426" y2="108" stroke="#6a6a73" stroke-width="2"/>
+<line x1="1663" y1="90" x2="1663" y2="110" stroke="#6a6a73" stroke-width="2"/>
+<text x="0" y="142" font-size="22" fill="#a3a1a9" font-family="'Geist Mono',monospace">100 ns</text>
+<text x="0" y="170" font-size="22" fill="#d8d0ff" font-family="'Geist Mono',monospace">10⁻⁷ s</text>
+<text x="238" y="142" font-size="22" fill="#a3a1a9" text-anchor="middle" font-family="'Geist Mono',monospace">1 µs</text>
+<text x="238" y="170" font-size="22" fill="#d8d0ff" text-anchor="middle" font-family="'Geist Mono',monospace">10⁻⁶ s</text>
+<text x="951" y="142" font-size="22" fill="#a3a1a9" text-anchor="middle" font-family="'Geist Mono',monospace">1 ms</text>
+<text x="951" y="170" font-size="22" fill="#d8d0ff" text-anchor="middle" font-family="'Geist Mono',monospace">10⁻³ s</text>
+<text x="1664" y="142" font-size="22" fill="#a3a1a9" text-anchor="end" font-family="'Geist Mono',monospace">1 s = 10⁰ s</text>
+<circle cx="66" cy="100" r="11" fill="#7b61ff"/>
+<rect x="1355" y="162" width="309" height="14" rx="2" fill="#7b61ff"/>
+<text x="0" y="214" font-size="24" fill="#d8d0ff">Engine: ~190 ns a message, all-in</text>
+<text x="1664" y="214" font-size="24" fill="#d8d0ff" text-anchor="end">Block: 50–1,000 ms</text>
+</svg>
+<div class="row">
+<div class="card"><p class="lbl">Rent next door</p><p class="sub" style="font-size:28px">Bots sit beside the sequencer, so sending is short for all. Seeing Nasdaq move decides the race.</p></div>
+<div class="card"><p class="lbl">The bot trades alone</p><p class="sub" style="font-size:28px">It quotes and cancels on its own. Humans only tune it, so where they sit doesn’t matter.</p></div>
+<div class="card"><p class="lbl">A VPN can’t help</p><p class="sub" style="font-size:28px">It adds a hop. Light in fibre: ~200 km per ms.</p></div>
+</div>
+<p class="small">Each step on the axis is 10×. A 250 ms block is <span class="violet">about a million times</span> the engine’s 190 ns.</p>
+<aside>The race on the last slide is decided by distance, not by the engine. Our simulation’s see and send latencies stand for this network distance: the sniper sees a price change in 5 ms and sends in 3; the LP sees in 20 and sends in 3. Next to that, the engine’s 190 nanoseconds per message (0.19 microseconds, measured flat out in stress mode, everything on the engine thread included) is invisible, and the block is longer still. Serious traders don’t trade from their laptop: the bot runs on a rented machine beside the venue and reacts on its own, so the person’s own location only delays when they change its settings. There are two distances. One is bot to sequencer: renting next door makes it short for everyone, which is why both send in 3 ms in our model. The other is Nasdaq, in New Jersey, to the bot: renting next to the sequencer doesn’t shorten it, and that is where the race is decided. The sniper sees the move in 5 ms, the LP in 20, for example a direct feed against a slower price feed. A VPN can’t shorten the path; it adds a stop. Where venues sit: Coinbase’s US exchange runs in AWS Virginia (its own docs). Binance runs in AWS Tokyo (per AWS, not Binance), and Hyperliquid tells node runners to sit in Tokyo. The Arbitrum and Robinhood Chain sequencers measure as AWS Ohio (Glassnode’s probes, not confirmed by them). A Tokyo to Frankfurt round trip is about 225 ms on AWS, about one Arbitrum block; inside one AWS region it is well under a millisecond. Binance is licensed in El Salvador, not hosted there.</aside>
+</section>

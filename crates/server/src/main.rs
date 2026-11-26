@@ -43,12 +43,19 @@ struct Args {
     /// Block length B in ms for --start.
     #[arg(long, default_value_t = 0)]
     block_ms: u64,
+    /// Market runs without the demo crowd: one LP and one regular trader, the talk's model.
+    #[arg(long)]
+    no_crowd: bool,
     /// Logs go to <out>/live/.
     #[arg(long, default_value = "out")]
     out: PathBuf,
     /// A run stops when its log reaches this many MB (stress logs grow fast).
-    #[arg(long, default_value_t = 2000)]
+    #[arg(long, default_value_t = 1000)]
     log_cap_mb: u64,
+    /// On exit, if <out>/live holds more than this many MB, delete logs oldest first until it
+    /// fits (each run's log was already checked when the run stopped).
+    #[arg(long, default_value_t = 1000)]
+    keep_logs_mb: u64,
     /// Don't open the dashboard in a browser.
     #[arg(long)]
     no_open: bool,
@@ -84,6 +91,7 @@ fn main() -> ExitCode {
         block_ms: args.block_ms,
         seed: args.seed,
         speed_milli: (args.speed * 1000.0).round() as u64,
+        crowd: !args.no_crowd,
     });
     if cfg!(debug_assertions) {
         eprintln!("note: debug build; use --release for the demo");
@@ -97,7 +105,7 @@ fn main() -> ExitCode {
         let opts = server::Options {
             addr: args.addr,
             autostart,
-            out_dir: args.out,
+            out_dir: args.out.clone(),
             log_cap_bytes: args.log_cap_mb * 1_000_000,
         };
         let srv = match server::start(opts).await {
@@ -115,8 +123,45 @@ fn main() -> ExitCode {
         let _ = tokio::signal::ctrl_c().await;
         eprintln!("stopping: writing and checking the log");
         srv.shutdown().await;
+        trim_logs(&args.out.join("live"), args.keep_logs_mb * 1_000_000);
         ExitCode::SUCCESS
     })
+}
+
+/// Delete logs in `dir`, oldest first, until what is left is at most `keep` bytes.
+fn trim_logs(dir: &std::path::Path, keep: u64) {
+    let Ok(rd) = std::fs::read_dir(dir) else {
+        return;
+    };
+    let mut files: Vec<(std::time::SystemTime, u64, PathBuf)> = rd
+        .flatten()
+        .filter_map(|e| {
+            let m = e.metadata().ok().filter(|m| m.is_file())?;
+            Some((m.modified().ok()?, m.len(), e.path()))
+        })
+        .collect();
+    let mut total: u64 = files.iter().map(|f| f.1).sum();
+    if total <= keep {
+        return;
+    }
+    files.sort();
+    let (mut n, mut freed) = (0, 0u64);
+    for (_, len, path) in files {
+        if total <= keep {
+            break;
+        }
+        if std::fs::remove_file(&path).is_ok() {
+            total -= len;
+            freed += len;
+            n += 1;
+        }
+    }
+    eprintln!(
+        "logs: deleted {n} old file(s), {} MB freed; {} MB left in {}",
+        freed / 1_000_000,
+        total / 1_000_000,
+        dir.display()
+    );
 }
 
 fn open(url: &str) {

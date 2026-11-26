@@ -113,6 +113,15 @@ impl Agent {
     }
 }
 
+/// One fill, as the live dashboard draws it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Trade {
+    pub t_ns: u64,
+    pub px: i64,
+    pub qty: u64,
+    pub taker_buy: bool,
+}
+
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct Counts {
     pub records: u64,
@@ -207,6 +216,8 @@ struct Sim {
     fees_paid: BTreeMap<AccountClass, (i128, i128)>,
     path: Vec<(u64, i64)>,
     decided: Vec<u64>,
+    /// Every fill, for the live dashboard's candles and trade tape.
+    trades: Vec<Trade>,
     /// Live load multiplier on the regular traders' arrival rate (1 unless changed live).
     load: u32,
     arrival_gen: u64,
@@ -233,7 +244,11 @@ impl Sim {
         let mut specs: Vec<(Latency, Latency, Role)> = Vec::new();
         for i in 0..cfg.lp.count {
             let id = FEED_ID + 1 + i;
-            specs.push((cfg.lp.see, cfg.lp.send, Role::Lp(Lp::new(id, &cfg.lp, pga))));
+            let mut see = cfg.lp.see;
+            if cfg.lp.count > 1 {
+                see.base_us += cfg.lp.see_spread_us * i as u64 / (cfg.lp.count as u64 - 1);
+            }
+            specs.push((see, cfg.lp.send, Role::Lp(Lp::new(id, &cfg.lp, pga))));
         }
         for _ in 0..cfg.sniper.count {
             let role = Role::Sniper(Sniper::new(&cfg.sniper, pga));
@@ -301,6 +316,7 @@ impl Sim {
             market_batch: Vec::new(),
             path: Vec::new(),
             decided: Vec::new(),
+            trades: Vec::new(),
             load: 1,
             arrival_gen: 0,
         }
@@ -663,6 +679,12 @@ impl Sim {
                 } => {
                     c.fills += 1;
                     c.volume_lots += qty;
+                    self.trades.push(Trade {
+                        t_ns: rec.t_ns,
+                        px,
+                        qty,
+                        taker_buy: taker_side == engine::Side::Buy,
+                    });
                     c.notional_tick_lots += px as i128 * qty as i128;
                     let (buyer, seller) = match taker_side {
                         engine::Side::Buy => (taker_agent, maker_agent),

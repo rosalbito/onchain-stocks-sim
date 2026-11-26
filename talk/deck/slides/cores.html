@@ -1,0 +1,19 @@
+<section id="cores" class="alt" style="gap:32px">
+<div class="head">
+<p class="eyebrow">Threads and cores · cost to match one Monday-open message</p>
+<h2>Share the core, and the cost doubles</h2>
+</div>
+<div class="bars">
+<div class="bar-row"><p class="bname">Machine quiet</p><p class="bval">35 ns</p><div class="bar on" style="width:327px"></div><p class="bx">1×</p></div>
+<div class="bar-row"><p class="bname">Busy, no priority</p><p class="bval">75 ns</p><div class="bar" style="width:700px"></div><p class="bx">2.1×</p></div>
+<div class="bar-row"><p class="bname">Busy, top priority</p><p class="bval">35 ns</p><div class="bar on" style="width:327px"></div><p class="bx">1×</p></div>
+<div class="bar-row"><p class="bname">Heavy, top priority</p><p class="bval">72–84 ns</p><div class="bar" style="width:740px"></div><p class="bx">2–2.4×</p></div>
+</div>
+<div class="row" style="gap:24px">
+<div class="card" style="padding:28px;gap:10px"><p class="lbl">Busy · heavy</p><p class="sub">Other programs using about 4 cores’ worth of CPU (busy) or 7.4 of the 8 (heavy).</p></div>
+<div class="card" style="padding:28px;gap:10px"><p class="lbl">Why it slows down</p><p class="sub">The M3 has 4 fast and 4 slow cores. When the fast ones are taken, macOS moves the engine to a slow one, and its data has to be fetched again.</p></div>
+<div class="card" style="padding:28px;gap:10px"><p class="lbl">The fix</p><p class="sub">macOS can only ask for priority. Linux can reserve a core for one thread, and nothing else runs there.</p></div>
+</div>
+<p class="small">Measured: <span class="mono">cargo run --release -p bench -- engine</span>, Apple M3. Not a controlled test: “busy” was Spotlight indexing, “heavy” another simulation of ours running at the same time.</p>
+<aside>The bars are the engine’s cost per message on the recorded Monday-open flow. “Busy” means other programs were using about 400% CPU, four cores’ worth; “heavy” means about 740%, nearly all eight. Those loads were not planned: Spotlight was indexing during one set of runs and another of our simulation runs was using the machine during another, so treat the exact numbers as indicative. Why sharing hurts: the M3 has four performance cores and four efficiency cores, which run at a lower clock with smaller caches. A thread does not own a core; the operating system decides every few milliseconds who runs where. When other programs take the performance cores, macOS moves the engine to an efficiency core, where it starts with cold caches and a slower clock: the cost per message doubled, 35 to 75 ns. Asking for top priority (user-interactive QoS) kept it on a performance core under the busy load, under 1% change, but not under the heavy one: priority is a request, not a reservation. On Linux you can reserve: pin the engine thread to one core and remove that core from the scheduler, so nothing else ever runs there. That is the conclusion that feeds the deploy slide: the engine thread gets a core to itself.</aside>
+</section>

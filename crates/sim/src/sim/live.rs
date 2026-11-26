@@ -145,6 +145,21 @@ impl Live {
         &self.sim.records
     }
 
+    /// When each record's sender decided to send it, aligned with `records`.
+    pub fn decided(&self) -> &[u64] {
+        &self.sim.decided
+    }
+
+    /// Every fill so far, in order.
+    pub fn trades(&self) -> &[super::Trade] {
+        &self.sim.trades
+    }
+
+    /// The account class of an agent.
+    pub fn class_of(&self, agent: engine::AgentId) -> Option<AccountClass> {
+        self.sim.classes.get(&agent).copied()
+    }
+
     pub fn counts(&self) -> Counts {
         let mut c = self.sim.counts;
         c.unsequenced = self.sim.sequencer.waiting() as u64;

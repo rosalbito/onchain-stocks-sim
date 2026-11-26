@@ -207,6 +207,15 @@ pub struct LpCfg {
     /// PGA bid on cancels, as basis points of exposure (spec section 8: β; 10_000 = β 1.0).
     /// Exposure is max(0, staleness at the LP's seen price) × lots; see docs/DECISIONS.md.
     pub beta_bps: u64,
+    /// With several LPs, LP i sees prices `see.base_us + i × spread / (count - 1)` late, so the
+    /// LPs range from fast to slow. 0 (the default, and every grid scenario) means all equal;
+    /// it is left out of the TOML then, so existing logs stay byte-identical.
+    #[serde(skip_serializing_if = "is_zero")]
+    pub see_spread_us: u64,
+}
+
+fn is_zero(v: &u64) -> bool {
+    *v == 0
 }
 
 impl Default for LpCfg {
@@ -230,6 +239,7 @@ impl Default for LpCfg {
             weekend_policy: WeekendPolicy::Widen,
             weekend_widen: 3,
             beta_bps: 0,
+            see_spread_us: 0,
         }
     }
 }
@@ -289,6 +299,34 @@ impl Default for RegularCfg {
 }
 
 impl Scenario {
+    /// The live demo's crowd: the same three roles with more of each, so the book has depth and
+    /// the engine sees thousands of messages a second at 1× instead of tens. 24 LPs from fast
+    /// (20 ms) to slow (80 ms) with five-level ladders, 3 snipers as before, 60 regular traders,
+    /// and a Nasdaq feed that moves 4× as often. The experiment grid never uses it.
+    pub fn with_crowd(&self) -> Scenario {
+        let mut s = self.clone();
+        s.lp.count = 24;
+        s.lp.see_spread_us = 60_000;
+        s.lp.levels = [(1, 10), (2, 8), (3, 6), (4, 4), (5, 2)]
+            .map(|(offset_ticks, qty_lots)| QuoteLevel {
+                offset_ticks,
+                qty_lots,
+            })
+            .to_vec();
+        s.regular.count = 60;
+        s.price.step_rate_per_s *= 4.0;
+        if let Some(w) = &mut s.weekend {
+            // Five busy minutes before the close instead of an hour, so skipping to the close
+            // takes seconds, and the same weekend flow in total as the talk's single trader.
+            let shift = (w.close_at_s - 300.0).max(0.0);
+            w.close_at_s -= shift;
+            w.reopen_at_s -= shift;
+            s.duration_s -= shift as u64;
+            s.regular.weekend_rate_per_s /= s.regular.count as f64;
+        }
+        s
+    }
+
     pub fn from_toml(text: &str) -> Result<Self, String> {
         let s: Scenario = toml::from_str(text).map_err(|e| e.to_string())?;
         s.validate()?;

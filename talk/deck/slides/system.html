@@ -1,0 +1,70 @@
+<section id="system" class="alt" style="gap:36px">
+<div class="head">
+<p class="eyebrow">The live system · one process, five threads</p>
+<h2>One thread writes. Everything else reads.</h2>
+</div>
+<svg viewBox="0 0 1664 420" width="1664" height="420" aria-label="Architecture. The browser sends commands over a websocket to the web edge, which passes them to the engine thread through the control ring. In stress mode a producer thread sends orders through the input ring instead. Inside the engine thread, step 1 the sequencer puts orders into blocks sorted by the ordering rule, step 2 the order book matches them. Every numbered record then goes out on one ring per reader: the UI bridge, which drops old frames and sends JSON snapshots to the browser; the standby, which replays and checks every fill; and the log writer, which never drops a record and writes the input log to disk." style="display:block;flex-shrink:0;font-family:'Geist',Arial,sans-serif">
+<defs>
+<marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="9" markerHeight="9" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#a3a1a9"/></marker>
+<marker id="ahv" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="9" markerHeight="9" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#7b61ff"/></marker>
+</defs>
+<rect x="0" y="40" width="200" height="100" rx="2" fill="#0b0b0f" stroke="#2a2a32"/>
+<text x="22" y="84" font-size="28" font-weight="500" fill="#edebe6">Browser</text>
+<text x="22" y="118" font-size="24" fill="#b9b7be">the dashboard</text>
+<rect x="330" y="40" width="220" height="100" rx="2" fill="#0b0b0f" stroke="#2a2a32"/>
+<text x="352" y="84" font-size="28" font-weight="500" fill="#edebe6">Web edge</text>
+<text x="352" y="118" font-size="24" fill="#b9b7be">HTTP + websocket</text>
+<line x1="204" y1="72" x2="326" y2="72" stroke="#a3a1a9" stroke-width="2" marker-end="url(#ah)"/>
+<text x="265" y="60" font-size="18" fill="#a3a1a9" text-anchor="middle" font-family="'Geist Mono',monospace">commands</text>
+<line x1="326" y1="112" x2="204" y2="112" stroke="#a3a1a9" stroke-width="2" marker-end="url(#ah)"/>
+<text x="265" y="138" font-size="18" fill="#a3a1a9" text-anchor="middle" font-family="'Geist Mono',monospace">snapshots</text>
+<rect x="700" y="0" width="620" height="190" rx="2" fill="#120f24" stroke="#7b61ff" stroke-width="2"/>
+<text x="724" y="40" font-size="28" font-weight="500" fill="#d8d0ff">Engine thread · the only writer</text>
+<rect x="724" y="62" width="262" height="108" rx="2" fill="#0c0a1a" stroke="#3a3a43"/>
+<text x="744" y="98" font-size="26" font-weight="500" fill="#edebe6">1 · Sequencer</text>
+<text x="744" y="130" font-size="22" fill="#b9b7be">blocks of B ms,</text>
+<text x="744" y="156" font-size="22" fill="#b9b7be">sorted by the rule</text>
+<line x1="990" y1="116" x2="1030" y2="116" stroke="#7b61ff" stroke-width="2" marker-end="url(#ahv)"/>
+<rect x="1034" y="62" width="262" height="108" rx="2" fill="#0c0a1a" stroke="#3a3a43"/>
+<text x="1054" y="98" font-size="26" font-weight="500" fill="#edebe6">2 · Order book</text>
+<text x="1054" y="130" font-size="22" fill="#b9b7be">matches each order,</text>
+<text x="1054" y="156" font-size="22" fill="#b9b7be">one at a time</text>
+<line x1="554" y1="90" x2="696" y2="90" stroke="#7b61ff" stroke-width="2" marker-end="url(#ahv)"/>
+<text x="625" y="78" font-size="18" fill="#d8d0ff" text-anchor="middle" font-family="'Geist Mono',monospace">control ring</text>
+<rect x="1444" y="40" width="220" height="100" rx="2" fill="#0b0b0f" stroke="#2a2a32"/>
+<text x="1466" y="84" font-size="28" font-weight="500" fill="#edebe6">Producer</text>
+<text x="1466" y="118" font-size="24" fill="#b9b7be">stress mode only</text>
+<line x1="1440" y1="90" x2="1324" y2="90" stroke="#7b61ff" stroke-width="2" marker-end="url(#ahv)"/>
+<text x="1382" y="78" font-size="18" fill="#d8d0ff" text-anchor="middle" font-family="'Geist Mono',monospace">input ring</text>
+<line x1="1010" y1="190" x2="1010" y2="236" stroke="#7b61ff" stroke-width="2"/>
+<line x1="460" y1="236" x2="1320" y2="236" stroke="#7b61ff" stroke-width="2"/>
+<line x1="460" y1="236" x2="460" y2="276" stroke="#7b61ff" stroke-width="2" marker-end="url(#ahv)"/>
+<line x1="1010" y1="236" x2="1010" y2="276" stroke="#7b61ff" stroke-width="2" marker-end="url(#ahv)"/>
+<line x1="1320" y1="236" x2="1320" y2="276" stroke="#7b61ff" stroke-width="2" marker-end="url(#ahv)"/>
+<text x="1030" y="224" font-size="18" fill="#d8d0ff" font-family="'Geist Mono',monospace">3 · every numbered record, one ring per reader</text>
+<rect x="330" y="280" width="260" height="96" rx="2" fill="#0b0b0f" stroke="#2a2a32"/>
+<text x="352" y="320" font-size="28" font-weight="500" fill="#edebe6">UI bridge</text>
+<text x="352" y="354" font-size="22" fill="#b9b7be">frames → JSON</text>
+<rect x="880" y="280" width="260" height="96" rx="2" fill="#0b0b0f" stroke="#2a2a32"/>
+<text x="902" y="320" font-size="28" font-weight="500" fill="#edebe6">Standby</text>
+<text x="902" y="354" font-size="22" fill="#b9b7be">a second engine</text>
+<rect x="1190" y="280" width="260" height="96" rx="2" fill="#0b0b0f" stroke="#2a2a32"/>
+<text x="1212" y="320" font-size="28" font-weight="500" fill="#edebe6">Log writer</text>
+<text x="1212" y="354" font-size="22" fill="#b9b7be">streams to disk</text>
+<rect x="1500" y="280" width="164" height="96" rx="2" fill="#050507" stroke="#2a2a32" stroke-dasharray="6 6"/>
+<text x="1520" y="320" font-size="28" font-weight="500" fill="#edebe6">Disk</text>
+<text x="1520" y="354" font-size="22" fill="#b9b7be">input log</text>
+<line x1="1454" y1="328" x2="1496" y2="328" stroke="#a3a1a9" stroke-width="2" marker-end="url(#ah)"/>
+<line x1="400" y1="276" x2="400" y2="144" stroke="#a3a1a9" stroke-width="2" marker-end="url(#ah)"/>
+<text x="388" y="214" font-size="18" fill="#a3a1a9" text-anchor="end" font-family="'Geist Mono',monospace">4 · JSON, 30×/s</text>
+<text x="330" y="408" font-size="20" fill="#a3a1a9" font-family="'Geist Mono',monospace">may drop old frames</text>
+<text x="880" y="408" font-size="20" fill="#a3a1a9" font-family="'Geist Mono',monospace">re-matches, checks fills</text>
+<text x="1190" y="408" font-size="20" fill="#a3a1a9" font-family="'Geist Mono',monospace">never drops a record</text>
+</svg>
+<div class="row" style="gap:24px">
+<div class="card" style="padding:28px;gap:10px"><p class="lbl">The log</p><p class="sub">Stores the sequencer’s output: every order, numbered. Not the fills: replaying the log re-creates them, and they must match.</p></div>
+<div class="card" style="padding:28px;gap:10px"><p class="lbl">UI bridge</p><p class="sub">Turns the newest engine frame into JSON. It skips old frames, so a slow browser can never slow the engine.</p></div>
+<div class="card" style="padding:28px;gap:10px"><p class="lbl">Websocket</p><p class="sub">Out, 30×/s: price, book, trades, races, profits, CPU, rings. In: start, stop, rule, B, speed, load.</p></div>
+</div>
+<aside>Walk it in the numbered order. The browser sends a command (start, change the rule, change B, speed, load) over the websocket; the web edge (axum on tokio) passes it to the engine thread through the control ring. Step 1: inside the engine thread, the sequencer collects the agents’ orders into blocks of B milliseconds and sorts each block by the ordering rule. In market mode the price feed and the agents run on this same thread, so a run is deterministic. In stress mode there is no sequencer: a producer thread floods orders through the input ring, first come first served. Step 2: the order book matches each message, one at a time. Step 3: every numbered record goes out on three rings, one per reader. The log writer must see every record, so if its ring is full the engine waits: the log is the source of truth. It stores the input, the numbered orders, not the fills; after a run it is read back from disk and replayed through a fresh engine, and the fills must hash the same. The standby is a second engine fed the same records: it times each message and checks its fills against the primary’s. The UI bridge only needs the latest picture, so it drops old frames and never makes the engine wait. Step 4: it turns the newest frame into a JSON snapshot about 30 times a second, plus a one-minute history twice a second, and the web edge pushes them to every browser over the websocket. Timing detail, if asked: in stress mode the record goes to the log ring before matching; in market mode right after, on the same thread, which is equivalent because the run can be rebuilt from the scenario, the seed and the logged controls.</aside>
+</section>

@@ -1,0 +1,16 @@
+<section id="takeaways" style="gap:40px">
+<div class="head">
+<p class="eyebrow">Takeaways · Apple M3 laptop, one process</p>
+<h2>What one core can do</h2>
+</div>
+<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:24px">
+<div class="card" style="padding:28px;gap:8px"><p class="lbl">Demo · stress, max</p><p style="font-size:56px;font-weight:300;line-height:1.1;color:#d8d0ff">5.3–5.7M</p><p class="sub">messages a second, sustained, on one engine thread</p></div>
+<div class="card" style="padding:28px;gap:8px"><p class="lbl">Demo · stress, 1M/s</p><p style="font-size:56px;font-weight:300;line-height:1.1;color:#edebe6">43 µs</p><p class="sub">99th percentile, order sent to order matched</p></div>
+<div class="card" style="padding:28px;gap:8px"><p class="lbl">Demo · System page</p><p style="font-size:56px;font-weight:300;line-height:1.1;color:#edebe6">~33 MB</p><p class="sub">whole process, flat out: orders in one reused slab, price levels in a B-tree</p></div>
+<div class="card" style="padding:28px;gap:8px"><p class="lbl">Bench · engine</p><p style="font-size:56px;font-weight:300;line-height:1.1;color:#edebe6">21–38 ns</p><p class="sub">to match one message, the engine alone</p></div>
+<div class="card" style="padding:28px;gap:8px"><p class="lbl">Bench · alloc</p><p style="font-size:56px;font-weight:300;line-height:1.1;color:#edebe6">≈ 0</p><p class="sub">memory allocations per message: 0.001–0.16, down from 1.3</p></div>
+<div class="card" style="padding:28px;gap:8px"><p class="lbl">Replay check</p><p style="font-size:56px;font-weight:300;line-height:1.1;color:#edebe6">141M</p><p class="sub">records, 3.07 GB, read back from disk and replayed: same fills</p></div>
+</div>
+<p class="lead">And the market: the sequencer’s rule, not speed, decides who keeps the stale-quote prize. <span class="violet">Cancel priority: 60× less LP loss at the Monday open.</span></p>
+<aside>Close on numbers the audience saw. The first three come straight from the demo: stress mode at max sustains 5.3 to 5.7 million messages a second on one engine thread, which runs out first; at 1 million a second, 99% of orders are matched within 43 microseconds of being sent; and the whole process stays around 33 megabytes, because orders live in one slab, an array whose slots are reused as orders come and go, price levels in a B-tree per side with a FIFO queue each, and emptied queues are recycled. The next two come from the benchmark crate: the engine alone matches a message in 21 to 38 nanoseconds on recorded flows, and it allocates almost nothing per message, 0.001 to 0.16 allocations, down from 1.3 before we reused buffers. The last is the correctness check: the largest stress run, 141 million records and 3 GB, read back from disk and replayed through a fresh engine, gave exactly the same fills. Every run gets that check, and the System page shows its result. Then land the market point in one line: the ordering rule, not speed, decides who keeps the prize.</aside>
+</section>

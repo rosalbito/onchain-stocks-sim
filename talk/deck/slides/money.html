@@ -1,0 +1,33 @@
+<section id="money" class="alt" style="gap:40px">
+<div class="head">
+<p class="eyebrow">Follow the money · one weekday hour, per rule</p>
+<h2>Each rule sends the prize somewhere else</h2>
+</div>
+<svg viewBox="0 0 1664 470" width="1664" height="470" aria-label="Stacked bars of where the LP's loss goes in one weekday hour. First come first served: the LP loses 19.22 dollars and wins 32 percent of races; snipers keep 14.36, the venue's taker fees 4.86. Priority gas auction: the LP loses 40.48 and wins 0.5 percent; snipers keep 0.39, venue 26.12, chain 13.97 in priority fees. Cancel priority: the LP loses 3.82 and wins 98 percent; snipers keep 2.39, venue 1.43." style="display:block;flex-shrink:0;font-family:'Geist',Arial,sans-serif">
+<rect x="0" y="6" width="22" height="22" rx="2" fill="#d8d0ff"/><text x="34" y="26" font-size="24" fill="#edebe6">snipers keep</text>
+<rect x="250" y="6" width="22" height="22" rx="2" fill="#4a4a55"/><text x="284" y="26" font-size="24" fill="#edebe6">venue · 1 bp taker fee</text>
+<rect x="590" y="6" width="22" height="22" rx="2" fill="#7b61ff"/><text x="624" y="26" font-size="24" fill="#edebe6">chain · priority fees</text>
+<text x="0" y="112" font-size="30" font-weight="500" fill="#edebe6">First come, first served</text>
+<text x="0" y="148" font-size="24" fill="#b9b7be">fastest wins · LP wins 32% of races</text>
+<rect x="470" y="94" width="390" height="56" fill="#d8d0ff"/>
+<text x="486" y="131" font-size="26" fill="#0c0a1a" font-family="'Geist Mono',monospace">$14.36</text>
+<rect x="860" y="94" width="132" height="56" fill="#4a4a55"/>
+<text x="874" y="131" font-size="26" fill="#edebe6" font-family="'Geist Mono',monospace">$4.86</text>
+<text x="1008" y="131" font-size="30" fill="#edebe6" font-family="'Geist Mono',monospace">= $19.22</text>
+<text x="0" y="252" font-size="30" font-weight="500" fill="#edebe6">Priority gas auction</text>
+<text x="0" y="288" font-size="24" fill="#b9b7be">highest fee wins · LP wins 0.5%</text>
+<rect x="470" y="234" width="11" height="56" fill="#d8d0ff"/>
+<rect x="481" y="234" width="710" height="56" fill="#4a4a55"/>
+<text x="497" y="271" font-size="26" fill="#edebe6" font-family="'Geist Mono',monospace">$26.12</text>
+<rect x="1191" y="234" width="380" height="56" fill="#7b61ff"/>
+<text x="1207" y="271" font-size="26" fill="#ffffff" font-family="'Geist Mono',monospace">$13.97</text>
+<text x="1664" y="324" font-size="30" fill="#edebe6" text-anchor="end" font-family="'Geist Mono',monospace">= $40.48 · snipers keep $0.39</text>
+<text x="0" y="412" font-size="30" font-weight="500" fill="#d8d0ff">Cancel priority</text>
+<text x="0" y="448" font-size="24" fill="#b9b7be">cancels go first · LP wins 98%</text>
+<rect x="470" y="394" width="65" height="56" fill="#d8d0ff"/>
+<rect x="535" y="394" width="39" height="56" fill="#4a4a55"/>
+<text x="590" y="431" font-size="30" fill="#d8d0ff" font-family="'Geist Mono',monospace">= $3.82 · snipers $2.39, venue $1.43</text>
+</svg>
+<p class="small">Bar length = dollars the LP loses to snipers in one weekday hour · 250 ms blocks, 3 snipers twice as fast, mean of 200 runs, same seeds for every rule · <span class="mono">analysis/out/headline_b250.csv</span>. Demo: the Profits page splits one run the same way.</p>
+<aside>Same scale for all three bars: the length is what the LP loses to snipers in one weekday hour, and the colours show where it ends up. First come, first served: speed decides, the LP wins about a third of the races, and the snipers keep most of the $19, the venue taking its 1 bp taker fee on their fills. Priority gas auction: a fee decides, the LP doesn’t bid, so it wins almost nothing and loses twice as much, $40. The snipers bid away nearly all their profit: $14 goes to the chain as priority fees and $26 to the venue as taker fees on their many small fills; they keep 39 cents. Cancel priority: cancels run first in each block, the LP wins 98% of races and loses $3.82, five times less than first come, first served. Next slide: the Monday open, where the gap makes the difference much bigger. Then how the PGA bidding works.</aside>
+</section>
